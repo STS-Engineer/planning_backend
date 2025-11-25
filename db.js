@@ -7,7 +7,8 @@ const pool = new Pool ({
     database: 'IT_ProjectsDB',  
     password: 'St$@0987',  
     port: 5432,  
-    ssl: false,  
+    ssl: { rejectUnauthorized: false }
+
 })
 
 module.exports= pool;
