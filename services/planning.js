@@ -53,9 +53,9 @@ router.post('/register', async (req, res) => {
       [email, hashedPassword, role]
     );
 
-    res.status(201).json({ 
-      message: 'User created successfully', 
-      user: result.rows[0] 
+    res.status(201).json({
+      message: 'User created successfully',
+      user: result.rows[0]
     });
   } catch (err) {
     console.error('Registration Error:', err);
@@ -84,25 +84,39 @@ router.post('/login', async (req, res) => {
 
     // Generate a PROPER JWT token (not mock)
     const token = jwt.sign(
-      { 
-        userId: user.id, 
+      {
+        userId: user.id,
         role: user.role,
-        email: user.email 
+        email: user.email
       },
       JWT_SECRET,
       { expiresIn: '72h' }
     );
 
-    res.status(200).json({ 
-      message: 'Login successful', 
-      token, 
-      role: user.role, 
+    res.status(200).json({
+      message: 'Login successful',
+      token,
+      role: user.role,
       user_id: user.id,
-      email: user.email 
+      email: user.email
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+// Get users with role = 'member'
+router.get('/users/members', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, email FROM "User" WHERE role = $1 ORDER BY email ASC',
+      ['member']
+    );
+
+    res.json({ users: result.rows });
+  } catch (error) {
+    console.error('Error fetching members:', error);
+    res.status(500).json({ error: 'Failed to fetch members' });
   }
 });
 // Get user by ID
@@ -125,40 +139,81 @@ router.get('/users/:id', authenticate, async (req, res) => {
   }
 });
 
+
+
+
+
 // ==================== PROJECT ENDPOINTS ====================
 
 // Create a new project
 router.post('/projects', authenticate, async (req, res) => {
-  const { project_name, start_date, end_date, comment } = req.body;
-  const user_id = req.user.userId;
+  const client = await pool.connect();
 
   try {
-    const result = await pool.query(
-      `INSERT INTO projects ("project-name", "start-date", "end-date", comment, user_id) 
-       VALUES ($1, $2, $3, $4, $5) 
-       RETURNING *`,
-      [project_name, start_date, end_date, comment, user_id]
+    const {
+      project_name,
+      start_date,
+      end_date,
+      comment,
+      members = [] // array of user IDs from dropdown
+    } = req.body;
+
+    const creatorId = req.user.userId;
+
+    await client.query('BEGIN');
+
+    // 1️⃣ Create project (creator stored ONLY here)
+    const projectResult = await client.query(
+      `
+      INSERT INTO projects ("project-name", "start-date", "end-date", comment, user_id)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING project_id
+      `,
+      [project_name, start_date, end_date, comment, creatorId]
     );
 
-    res.status(201).json({ 
-      message: 'Project created successfully', 
-      project: result.rows[0] 
+    const projectId = projectResult.rows[0].project_id;
+
+    // 2️⃣ Add ONLY selected members
+    for (const memberId of members) {
+      await client.query(
+        `
+        INSERT INTO project_members (project_id, user_id, role)
+        VALUES ($1, $2, 'member')
+        ON CONFLICT (project_id, user_id) DO NOTHING
+        `,
+        [projectId, memberId]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      message: 'Project created successfully',
+      project_id: projectId
     });
+
   } catch (error) {
-    console.error(error);
+    await client.query('ROLLBACK');
+    console.error('Create project error:', error);
     res.status(500).json({ error: 'Failed to create project' });
+  } finally {
+    client.release();
   }
 });
 
-// Get all projects for a user
-router.get('/projects', authenticate, async (req, res) => {
-  const user_id = req.user.userId;
 
+// Get projects for logged-in member
+router.get('/api/my-projects', authenticate, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT * FROM projects WHERE user_id = $1 ORDER BY project_id DESC`,
-      [user_id]
-    );
+   
+    const userId = req.user.userId; // ✅ correct
+    const result = await pool.query(`
+      SELECT p.*, pm.role
+      FROM projects p
+      JOIN project_members pm ON p.project_id = pm.project_id
+      WHERE pm.user_id = $1
+    `, [userId]);
 
     res.json({ projects: result.rows });
   } catch (error) {
@@ -166,6 +221,41 @@ router.get('/projects', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch projects' });
   }
 });
+
+
+
+// Get all projects for a user
+// Get all projects for a user
+router.get('/projects', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId; // ✅ use userId, not id
+    const userRole = req.user.role;
+
+    let query;
+    let params = [];
+
+    if (userRole === 'ADMIN') {
+      query = `SELECT * FROM projects ORDER BY project_id DESC`;
+    } else {
+      query = `
+        SELECT p.*, pm.role as member_role
+        FROM projects p
+        JOIN project_members pm ON p.project_id = pm.project_id
+        WHERE pm.user_id = $1
+        ORDER BY p.project_id DESC
+      `;
+      params = [userId];
+    }
+
+    const result = await pool.query(query, params);
+
+    res.json({ projects: result.rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch projects' });
+  }
+});
+
 
 // Get project by ID
 router.get('/projects/:id', authenticate, async (req, res) => {
@@ -208,9 +298,9 @@ router.put('/projects/:id', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Project not found' });
     }
 
-    res.json({ 
-      message: 'Project updated successfully', 
-      project: result.rows[0] 
+    res.json({
+      message: 'Project updated successfully',
+      project: result.rows[0]
     });
   } catch (error) {
     console.error(error);
@@ -226,7 +316,7 @@ router.delete('/projects/:id', authenticate, async (req, res) => {
   try {
     // First delete associated tasks
     await pool.query('DELETE FROM tasks WHERE project_id = $1', [id]);
-    
+
     // Then delete the project
     const result = await pool.query(
       'DELETE FROM projects WHERE project_id = $1 AND user_id = $2 RETURNING *',
@@ -268,9 +358,9 @@ router.post('/tasks', authenticate, async (req, res) => {
       [task_name, task_description, project_id]
     );
 
-    res.status(201).json({ 
-      message: 'Task created successfully', 
-      task: result.rows[0] 
+    res.status(201).json({
+      message: 'Task created successfully',
+      task: result.rows[0]
     });
   } catch (error) {
     console.error(error);
@@ -360,9 +450,9 @@ router.put('/tasks/:id', authenticate, async (req, res) => {
       [task_name, task_description, project_id, id]
     );
 
-    res.json({ 
-      message: 'Task updated successfully', 
-      task: result.rows[0] 
+    res.json({
+      message: 'Task updated successfully',
+      task: result.rows[0]
     });
   } catch (error) {
     console.error(error);
@@ -461,7 +551,7 @@ router.get('/users/search/:email', authenticate, async (req, res) => {
   try {
     const { email } = req.params;
     console.log('Searching users with email:', email);
-    
+
     const result = await pool.query(
       'SELECT id, email, role FROM "User" WHERE email ILIKE $1 ORDER BY email ASC',
       [`%${email}%`]
@@ -479,13 +569,13 @@ router.get('/users/search/:email', authenticate, async (req, res) => {
 router.post('/users/batch', authenticate, async (req, res) => {
   try {
     const { userIds } = req.body;
-    
+
     if (!userIds || !Array.isArray(userIds)) {
       return res.status(400).json({ message: 'User IDs array is required' });
     }
 
     console.log('Fetching users batch:', userIds);
-    
+
     const result = await pool.query(
       'SELECT id, email, role FROM "User" WHERE id = ANY($1) ORDER BY email ASC',
       [userIds]
@@ -502,7 +592,7 @@ router.post('/users/batch', authenticate, async (req, res) => {
 router.get('/profile', authenticate, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
+
     const result = await pool.query(
       'SELECT id, email, role FROM "User" WHERE id = $1',
       [userId]
