@@ -12,7 +12,7 @@ const prodformrouter = require('./services/planning');
 
 // ✅ CORS config FIRST
 app.use(cors({
-  origin: 'http://localhost:3000',  // frontend domain
+  origin: 'https://sts-project-management.azurewebsites.net',  // frontend domain
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
