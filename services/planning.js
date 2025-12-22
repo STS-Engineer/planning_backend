@@ -228,20 +228,57 @@ router.get('/api/my-projects', authenticate, async (req, res) => {
 // Get all projects for a user
 router.get('/projects', authenticate, async (req, res) => {
   try {
-    const userId = req.user.userId; // ✅ use userId, not id
+    const userId = req.user.userId;
     const userRole = req.user.role;
 
     let query;
     let params = [];
 
     if (userRole === 'ADMIN') {
-      query = `SELECT * FROM projects ORDER BY project_id DESC`;
+      query = `
+        SELECT 
+          p.*,
+          COALESCE(
+            json_agg(
+              DISTINCT jsonb_build_object(
+                'id', u.id,
+                'email', u.email,
+                'role', pm.role
+              )
+            ) FILTER (WHERE u.id IS NOT NULL),
+            '[]'
+          ) AS members
+        FROM projects p
+        LEFT JOIN project_members pm 
+          ON p.project_id = pm.project_id
+        LEFT JOIN public."User" u 
+          ON pm.user_id = u.id
+        GROUP BY p.project_id
+        ORDER BY p.project_id DESC
+      `;
     } else {
       query = `
-        SELECT p.*, pm.role as member_role
+        SELECT 
+          p.*,
+          COALESCE(
+            json_agg(
+              DISTINCT jsonb_build_object(
+                'id', u.id,
+                'email', u.email,
+                'role', pm.role
+              )
+            ) FILTER (WHERE u.id IS NOT NULL),
+            '[]'
+          ) AS members
         FROM projects p
-        JOIN project_members pm ON p.project_id = pm.project_id
-        WHERE pm.user_id = $1
+        JOIN project_members pm_filter
+          ON p.project_id = pm_filter.project_id
+        LEFT JOIN project_members pm
+          ON p.project_id = pm.project_id
+        LEFT JOIN public."User" u
+          ON pm.user_id = u.id
+        WHERE pm_filter.user_id = $1
+        GROUP BY p.project_id
         ORDER BY p.project_id DESC
       `;
       params = [userId];
@@ -249,13 +286,14 @@ router.get('/projects', authenticate, async (req, res) => {
 
     const result = await pool.query(query, params);
 
+    console.log('Projects result:', result.rows); // 🔍 debug
+
     res.json({ projects: result.rows });
   } catch (error) {
-    console.error(error);
+    console.error('Failed to fetch projects:', error);
     res.status(500).json({ error: 'Failed to fetch projects' });
   }
 });
-
 
 // Get project by ID
 router.get('/projects/:id', authenticate, async (req, res) => {
