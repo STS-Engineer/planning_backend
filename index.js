@@ -9,7 +9,7 @@ const server = http.createServer(app);
 const prodformrouter = require('./services/planning');
 
 
-
+   
 // ✅ CORS config FIRST
 app.use(cors({
   origin: 'https://sts-project-management.azurewebsites.net',  // frontend domain
