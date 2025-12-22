@@ -11,7 +11,7 @@ const server = http.createServer(app);
 
 const corsOptions = {
   origin: 'https://sts-project-management.azurewebsites.net',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], 
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 };
