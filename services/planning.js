@@ -57,7 +57,7 @@ const sendAssignmentEmail = async (to, name, projectName, startDate, endDate) =>
           <li><strong>Start Date:</strong> ${startDate}</li>
           <li><strong>End Date:</strong> ${endDate}</li>
         </ul>
-        <p>Please check your dashboard for more details.</p>
+        <p>Please check your <a href="https://sts-project-management.azurewebsites.net/dashboard" target="_blank">dashboard</a> for more details.</p>
         <p>Regards,<br/>STS Project Management Team</p>
       `,
     });
@@ -437,52 +437,80 @@ router.delete('/projects/:id', authenticate, async (req, res) => {
 
 // ==================== TASK ENDPOINTS ====================
 
-// Create a new task
+// ==================== TASK ENDPOINTS ====================
+
+// Helper function to check if user has access to project
+const hasProjectAccess = async (projectId, userId, userRole) => {
+  if (userRole === 'ADMIN') {
+    return true; // Admins have access to all projects
+  }
+
+  // Check if user is the project owner
+  const ownerCheck = await pool.query(
+    'SELECT * FROM projects WHERE project_id = $1 AND user_id = $2',
+    [projectId, userId]
+  );
+
+  if (ownerCheck.rows.length > 0) {
+    return true; // User is the project owner
+  }
+
+  // Check if user is a project member
+  const memberCheck = await pool.query(
+    'SELECT * FROM project_members WHERE project_id = $1 AND user_id = $2',
+    [projectId, userId]
+  );
+
+  return memberCheck.rows.length > 0; // User is a project member
+};
+
+// Create a new task (UPDATED WITH STATUS)
 router.post('/tasks', authenticate, async (req, res) => {
-  const { task_name, task_description, project_id } = req.body;
+  const { task_name, task_description, project_id, status = 'todo' } = req.body;
 
   try {
-    // Verify project belongs to user
-    const projectCheck = await pool.query(
-      'SELECT * FROM projects WHERE project_id = $1 AND user_id = $2',
-      [project_id, req.user.userId]
-    );
+    console.log('Create task request:', { task_name, project_id, status, userId: req.user.userId, role: req.user.role });
 
-    if (projectCheck.rows.length === 0) {
-      return res.status(404).json({ message: 'Project not found' });
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(project_id, req.user.userId, req.user.role);
+
+    if (!hasAccess) {
+      console.log('Access denied: User does not have access to this project');
+      return res.status(403).json({ message: 'Access denied: You do not have access to this project' });
     }
 
     const result = await pool.query(
-      `INSERT INTO tasks (task_name, "task-description", project_id) 
-       VALUES ($1, $2, $3) 
+      `INSERT INTO tasks (task_name, "task-description", project_id, status) 
+       VALUES ($1, $2, $3, $4) 
        RETURNING *`,
-      [task_name, task_description, project_id]
+      [task_name, task_description, project_id, status]
     );
+
+    console.log('Task created successfully:', result.rows[0]);
 
     res.status(201).json({
       message: 'Task created successfully',
       task: result.rows[0]
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to create task' });
+    console.error('Error creating task:', error);
+    res.status(500).json({ error: 'Failed to create task', details: error.message });
   }
 });
 
-// Get all tasks for a project
+// Get all tasks for a project (UPDATED)
 router.get('/projects/:projectId/tasks', authenticate, async (req, res) => {
   const { projectId } = req.params;
-  const user_id = req.user.userId;
 
   try {
-    // Verify project belongs to user
-    const projectCheck = await pool.query(
-      'SELECT * FROM projects WHERE project_id = $1 AND user_id = $2',
-      [projectId, user_id]
-    );
+    console.log('Get tasks request:', { projectId, userId: req.user.userId, role: req.user.role });
 
-    if (projectCheck.rows.length === 0) {
-      return res.status(404).json({ message: 'Project not found' });
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(projectId, req.user.userId, req.user.role);
+
+    if (!hasAccess) {
+      console.log('Access denied: User does not have access to this project');
+      return res.status(403).json({ message: 'Access denied: You do not have access to this project' });
     }
 
     const result = await pool.query(
@@ -494,53 +522,73 @@ router.get('/projects/:projectId/tasks', authenticate, async (req, res) => {
       [projectId]
     );
 
+    console.log(`Found ${result.rows.length} tasks for project ${projectId}`);
+
     res.json({ tasks: result.rows });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to fetch tasks' });
+    console.error('Error fetching tasks:', error);
+    res.status(500).json({ error: 'Failed to fetch tasks', details: error.message });
   }
 });
 
-// Get task by ID
+// Get task by ID (UPDATED)
 router.get('/tasks/:id', authenticate, async (req, res) => {
   const { id } = req.params;
 
   try {
     const result = await pool.query(
-      `SELECT t.*, p."project-name", p.user_id 
+      `SELECT t.*, p."project-name", p.project_id 
        FROM tasks t 
        JOIN projects p ON t.project_id = p.project_id 
-       WHERE t.task_id = $1 AND p.user_id = $2`,
-      [id, req.user.userId]
+       WHERE t.task_id = $1`,
+      [id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Task not found' });
     }
 
-    res.json({ task: result.rows[0] });
+    const task = result.rows[0];
+
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(task.project_id, req.user.userId, req.user.role);
+
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    res.json({ task });
   } catch (error) {
-    console.error(error);
+    console.error('Error fetching task:', error);
     res.status(500).json({ error: 'Failed to fetch task' });
   }
 });
 
-// Update task
+// Update task (UPDATED)
 router.put('/tasks/:id', authenticate, async (req, res) => {
   const { id } = req.params;
   const { task_name, task_description, project_id } = req.body;
 
   try {
-    // Verify task belongs to user
+    // Get the task first to check project access
     const taskCheck = await pool.query(
-      `SELECT t.* FROM tasks t 
+      `SELECT t.*, p.project_id FROM tasks t 
        JOIN projects p ON t.project_id = p.project_id 
-       WHERE t.task_id = $1 AND p.user_id = $2`,
-      [id, req.user.userId]
+       WHERE t.task_id = $1`,
+      [id]
     );
 
     if (taskCheck.rows.length === 0) {
       return res.status(404).json({ message: 'Task not found' });
+    }
+
+    const task = taskCheck.rows[0];
+
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(task.project_id, req.user.userId, req.user.role);
+
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Access denied' });
     }
 
     const result = await pool.query(
@@ -556,40 +604,101 @@ router.put('/tasks/:id', authenticate, async (req, res) => {
       task: result.rows[0]
     });
   } catch (error) {
-    console.error(error);
+    console.error('Error updating task:', error);
     res.status(500).json({ error: 'Failed to update task' });
   }
 });
 
-// Delete task
-router.delete('/tasks/:id', authenticate, async (req, res) => {
+// Update task status - NEW ENDPOINT FOR DRAG & DROP
+router.patch('/tasks/:id/status', authenticate, async (req, res) => {
   const { id } = req.params;
+  const { status } = req.body;
 
   try {
-    // Verify task belongs to user
+    console.log('Update task status request:', { taskId: id, newStatus: status, userId: req.user.userId });
+
+    // Validate status
+    const validStatuses = ['todo', 'in_progress', 'done'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status. Must be one of: todo, in_progress, done' });
+    }
+
+    // Get the task first to check project access
     const taskCheck = await pool.query(
-      `SELECT t.* FROM tasks t 
+      `SELECT t.*, p.project_id FROM tasks t 
        JOIN projects p ON t.project_id = p.project_id 
-       WHERE t.task_id = $1 AND p.user_id = $2`,
-      [id, req.user.userId]
+       WHERE t.task_id = $1`,
+      [id]
     );
 
     if (taskCheck.rows.length === 0) {
       return res.status(404).json({ message: 'Task not found' });
     }
 
+    const task = taskCheck.rows[0];
+
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(task.project_id, req.user.userId, req.user.role);
+
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Update task status
     const result = await pool.query(
-      'DELETE FROM tasks WHERE task_id = $1 RETURNING *',
-      [id]
+      `UPDATE tasks 
+       SET status = $1 
+       WHERE task_id = $2 
+       RETURNING *`,
+      [status, id]
     );
 
-    res.json({ message: 'Task deleted successfully' });
+    console.log('Task status updated successfully:', result.rows[0]);
+
+    res.json({
+      message: 'Task status updated successfully',
+      task: result.rows[0]
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to delete task' });
+    console.error('Error updating task status:', error);
+    res.status(500).json({ error: 'Failed to update task status', details: error.message });
   }
 });
 
+// Delete task (UPDATED)
+router.delete('/tasks/:id', authenticate, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Get the task first to check project access
+    const taskCheck = await pool.query(
+      `SELECT t.*, p.project_id FROM tasks t 
+       JOIN projects p ON t.project_id = p.project_id 
+       WHERE t.task_id = $1`,
+      [id]
+    );
+
+    if (taskCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
+    const task = taskCheck.rows[0];
+
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(task.project_id, req.user.userId, req.user.role);
+
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    await pool.query('DELETE FROM tasks WHERE task_id = $1', [id]);
+
+    res.json({ message: 'Task deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    res.status(500).json({ error: 'Failed to delete task' });
+  }
+});
 // ==================== DASHBOARD STATS ====================
 
 // Get dashboard statistics
