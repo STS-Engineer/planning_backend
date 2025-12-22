@@ -43,14 +43,14 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const sendAssignmentEmail = async (to, projectName, startDate, endDate) => {
+const sendAssignmentEmail = async (to, name, projectName, startDate, endDate) => {
   try {
     await transporter.sendMail({
       from: '"STS Project Management" <administration.STS@avocarbon.com>',
       to, // recipient email
       subject: `You have been assigned to a new project: ${projectName}`,
       html: `
-        <p>Hi,</p>
+         <p>Dear ${name},</p>
         <p>You have been assigned to a new project:</p>
         <ul>
           <li><strong>Project Name:</strong> ${projectName}</li>
@@ -65,7 +65,6 @@ const sendAssignmentEmail = async (to, projectName, startDate, endDate) => {
     console.error('Failed to send email:', err);
   }
 };
-
 // ==================== USER ENDPOINTS ====================
 
 router.post('/register', async (req, res) => {
