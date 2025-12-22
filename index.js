@@ -10,16 +10,19 @@ const server = http.createServer(app);
 
 const prodformrouter = require('./services/planning');
 
-// ✅ CORS FIRST — VERY IMPORTANT
-app.use(cors({
+const corsOptions = {
   origin: 'https://sts-project-management.azurewebsites.net',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
-}));
+};
 
-// ✅ Explicitly allow preflight
-app.options('*', cors());
+// Apply CORS globally
+app.use(cors(corsOptions));
+
+// Handle preflight OPTIONS requests
+app.options('*', cors(corsOptions));
+
 
 // Middleware AFTER cors
 app.use(bodyParser.json({ limit: '50mb' }));
