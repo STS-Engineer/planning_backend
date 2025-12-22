@@ -1,14 +1,13 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const cors = require('cors');
 require('dotenv').config();
 const http = require('http');
 const path = require('path');
 
+const prodformrouter = require('./services/planning');
+
 const app = express();
 const server = http.createServer(app);
-
-const prodformrouter = require('./services/planning');
 
 const corsOptions = {
   origin: 'https://sts-project-management.azurewebsites.net',
@@ -17,22 +16,19 @@ const corsOptions = {
   credentials: true
 };
 
-// Apply CORS globally
+// ✅ Apply CORS globally
 app.use(cors(corsOptions));
 
-// Correct preflight handling
-app.options('/*', cors(corsOptions));
+// ✅ Body parsing middleware
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-
-
-// Middleware AFTER cors
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
-app.use(express.json());
-
-// Routes
+// ✅ Routes
 app.use('/ajouter', prodformrouter);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Optional test route
+app.get('/test', (req, res) => res.send('Server is running!'));
 
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
