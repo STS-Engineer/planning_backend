@@ -65,6 +65,7 @@ const sendAssignmentEmail = async (to, name, projectName, startDate, endDate) =>
     console.error('Failed to send email:', err);
   }
 };
+
 // ==================== USER ENDPOINTS ====================
 
 router.post('/register', async (req, res) => {
@@ -180,6 +181,21 @@ router.get('/users/:id', authenticate, async (req, res) => {
 
 // ==================== PROJECT ENDPOINTS ====================
 
+const getNameFromEmail = (email) => {
+  if (!email) return "User";
+
+  // Get part before @
+  const namePart = email.split('@')[0]; // "john.doe"
+
+  // Replace dots/underscores with space
+  const nameWithSpaces = namePart.replace(/[._]/g, ' '); // "john doe"
+
+  // Capitalize first letter of each word
+  const formattedName = nameWithSpaces.replace(/\b\w/g, char => char.toUpperCase()); // "John Doe"
+
+  return formattedName;
+};
+
 // Create a new project
 router.post('/projects', authenticate, async (req, res) => {
   const client = await pool.connect();
@@ -213,20 +229,23 @@ router.post('/projects', authenticate, async (req, res) => {
     for (const memberId of members) {
       await client.query(
         `
-        INSERT INTO project_members (project_id, user_id, role)
-        VALUES ($1, $2, 'member')
-        ON CONFLICT (project_id, user_id) DO NOTHING
-        `,
+    INSERT INTO project_members (project_id, user_id, role)
+    VALUES ($1, $2, 'member')
+    ON CONFLICT (project_id, user_id) DO NOTHING
+    `,
         [projectId, memberId]
       );
 
-      // ✅ Get member email
+      // Get member email
       const { rows } = await client.query('SELECT email FROM "User" WHERE id = $1', [memberId]);
       const email = rows[0]?.email;
+      const fullName = getNameFromEmail(email);
+
       if (email) {
-        sendAssignmentEmail(email, project_name, start_date, end_date);
+        await sendAssignmentEmail(email, fullName, project_name, start_date, end_date);
       }
     }
+
 
     await client.query('COMMIT');
 
@@ -249,7 +268,7 @@ router.post('/projects', authenticate, async (req, res) => {
 // Get projects for logged-in member
 router.get('/api/my-projects', authenticate, async (req, res) => {
   try {
-   
+
     const userId = req.user.userId; // ✅ correct
     const result = await pool.query(`
       SELECT p.*, pm.role
