@@ -20,8 +20,9 @@ const corsOptions = {
 // Apply CORS globally
 app.use(cors(corsOptions));
 
-// Handle preflight OPTIONS requests
-app.options('*', cors(corsOptions));
+// Correct preflight handling
+app.options('/*', cors(corsOptions));
+
 
 
 // Middleware AFTER cors
