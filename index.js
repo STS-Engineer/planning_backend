@@ -4,23 +4,24 @@ const cors = require('cors');
 require('dotenv').config();
 const http = require('http');
 const path = require('path');
+
 const app = express();
 const server = http.createServer(app);
+
 const prodformrouter = require('./services/planning');
 
-
-   
-// ✅ CORS config FIRST
+// ✅ CORS FIRST — VERY IMPORTANT
 app.use(cors({
-  origin: 'https://sts-project-management.azurewebsites.net',  // frontend domain
+  origin: 'https://sts-project-management.azurewebsites.net',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 
+// ✅ Explicitly allow preflight
+app.options('*', cors());
 
-
-// Middleware
+// Middleware AFTER cors
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.json());
@@ -29,7 +30,5 @@ app.use(express.json());
 app.use('/ajouter', prodformrouter);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-
-
-const PORT = 4000;
+const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
