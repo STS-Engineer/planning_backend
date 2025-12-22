@@ -32,6 +32,40 @@ const authenticate = (req, res, next) => {
     res.status(401).json({ message: 'Invalid or expired token' });
   }
 };
+
+const transporter = nodemailer.createTransport({
+  host: "avocarbon-com.mail.protection.outlook.com",
+  port: 25,
+  secure: false,
+  auth: {
+    user: "administration.STS@avocarbon.com",
+    pass: "shnlgdyfbcztbhxn",
+  },
+});
+
+const sendAssignmentEmail = async (to, projectName, startDate, endDate) => {
+  try {
+    await transporter.sendMail({
+      from: '"STS Project Management" <administration.STS@avocarbon.com>',
+      to, // recipient email
+      subject: `You have been assigned to a new project: ${projectName}`,
+      html: `
+        <p>Hi,</p>
+        <p>You have been assigned to a new project:</p>
+        <ul>
+          <li><strong>Project Name:</strong> ${projectName}</li>
+          <li><strong>Start Date:</strong> ${startDate}</li>
+          <li><strong>End Date:</strong> ${endDate}</li>
+        </ul>
+        <p>Please check your dashboard for more details.</p>
+        <p>Regards,<br/>STS Project Management Team</p>
+      `,
+    });
+  } catch (err) {
+    console.error('Failed to send email:', err);
+  }
+};
+
 // ==================== USER ENDPOINTS ====================
 
 router.post('/register', async (req, res) => {
@@ -105,6 +139,8 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ error: 'Login failed' });
   }
 });
+
+
 // Get users with role = 'member'
 router.get('/users/members', authenticate, async (req, res) => {
   try {
@@ -155,14 +191,14 @@ router.post('/projects', authenticate, async (req, res) => {
       start_date,
       end_date,
       comment,
-      members = [] // array of user IDs from dropdown
+      members = [] // array of user IDs
     } = req.body;
 
     const creatorId = req.user.userId;
 
     await client.query('BEGIN');
 
-    // 1️⃣ Create project (creator stored ONLY here)
+    // 1️⃣ Create project
     const projectResult = await client.query(
       `
       INSERT INTO projects ("project-name", "start-date", "end-date", comment, user_id)
@@ -174,7 +210,7 @@ router.post('/projects', authenticate, async (req, res) => {
 
     const projectId = projectResult.rows[0].project_id;
 
-    // 2️⃣ Add ONLY selected members
+    // 2️⃣ Add selected members and send emails
     for (const memberId of members) {
       await client.query(
         `
@@ -184,6 +220,13 @@ router.post('/projects', authenticate, async (req, res) => {
         `,
         [projectId, memberId]
       );
+
+      // ✅ Get member email
+      const { rows } = await client.query('SELECT email FROM "User" WHERE id = $1', [memberId]);
+      const email = rows[0]?.email;
+      if (email) {
+        sendAssignmentEmail(email, project_name, start_date, end_date);
+      }
     }
 
     await client.query('COMMIT');
@@ -201,6 +244,7 @@ router.post('/projects', authenticate, async (req, res) => {
     client.release();
   }
 });
+
 
 
 // Get projects for logged-in member
@@ -294,6 +338,7 @@ router.get('/projects', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch projects' });
   }
 });
+
 
 // Get project by ID
 router.get('/projects/:id', authenticate, async (req, res) => {
