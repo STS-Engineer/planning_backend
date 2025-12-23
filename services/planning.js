@@ -1129,7 +1129,6 @@ router.get('/dashboard/stats', authenticate, async (req, res) => {
 });
 
 
-// ==================== GLOBAL STATISTICS ====================
 
 router.get('/statistics/summary', authenticate, async (req, res) => {
   const userId = req.user.userId;
