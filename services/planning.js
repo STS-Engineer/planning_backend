@@ -196,6 +196,32 @@ const getNameFromEmail = (email) => {
   return formattedName;
 };
 
+
+// Helper to get user details for assignee
+const getUserDetails = async (userId) => {
+  if (!userId) return null;
+  
+  try {
+    const result = await pool.query(
+      'SELECT id, email, role FROM "User" WHERE id = $1',
+      [userId]
+    );
+    
+    if (result.rows.length === 0) return null;
+    
+    const user = result.rows[0];
+    return {
+      id: user.id,
+      email: user.email,
+      name: getNameFromEmail(user.email),
+      role: user.role
+    };
+  } catch (error) {
+    console.error('Error fetching user details:', error);
+    return null;
+  }
+};
+
 // Create a new project
 router.post('/projects', authenticate, async (req, res) => {
   const client = await pool.connect();
@@ -466,10 +492,33 @@ const hasProjectAccess = async (projectId, userId, userRole) => {
 
 // Create a new task (UPDATED WITH STATUS)
 router.post('/tasks', authenticate, async (req, res) => {
-  const { task_name, task_description, project_id, status = 'todo' } = req.body;
+  const { 
+    task_name, 
+    task_description, 
+    project_id, 
+    status = 'todo',
+    assignee_id,  // This might be coming as a string
+    start_date = null,
+    end_date = null 
+  } = req.body;
 
   try {
-    console.log('Create task request:', { task_name, project_id, status, userId: req.user.userId, role: req.user.role });
+    console.log("🔍 RAW REQUEST BODY:", req.body);
+    console.log("🔍 assignee_id from request:", assignee_id, "Type:", typeof assignee_id);
+
+    // Parse assignee_id to integer if it exists
+    let parsedAssigneeId = null;
+    if (assignee_id !== undefined && assignee_id !== null && assignee_id !== '') {
+      parsedAssigneeId = parseInt(assignee_id);
+      console.log("🔍 Parsed assignee_id:", parsedAssigneeId, "Type:", typeof parsedAssigneeId);
+      
+      if (isNaN(parsedAssigneeId)) {
+        console.log("❌ Invalid assignee_id format:", assignee_id);
+        return res.status(400).json({ 
+          message: 'Invalid assignee ID format. Must be a number.' 
+        });
+      }
+    }
 
     // Check if user has access to this project
     const hasAccess = await hasProjectAccess(project_id, req.user.userId, req.user.role);
@@ -479,26 +528,140 @@ router.post('/tasks', authenticate, async (req, res) => {
       return res.status(403).json({ message: 'Access denied: You do not have access to this project' });
     }
 
+    // If assignee_id is provided, validate they are a project member
+    if (parsedAssigneeId) {
+      console.log("🔍 Validating assignee:", parsedAssigneeId);
+      
+      const isProjectMember = await pool.query(
+        'SELECT * FROM project_members WHERE project_id = $1 AND user_id = $2',
+        [project_id, parsedAssigneeId]
+      );
+
+      console.log("🔍 Project member check result:", isProjectMember.rows);
+
+      if (isProjectMember.rows.length === 0) {
+        console.log("❌ Assignee is not a project member");
+        return res.status(400).json({ 
+          message: 'Assignee must be a member of the project' 
+        });
+      }
+    }
+
+    console.log("💾 Inserting task with assignee_id:", parsedAssigneeId);
+
     const result = await pool.query(
-      `INSERT INTO tasks (task_name, "task-description", project_id, status) 
-       VALUES ($1, $2, $3, $4) 
+      `INSERT INTO tasks (
+        task_name, 
+        "task-description", 
+        project_id, 
+        status,
+        assignee_id,
+        "start-date",
+        "end-date"
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7) 
        RETURNING *`,
-      [task_name, task_description, project_id, status]
+      [
+        task_name, 
+        task_description, 
+        project_id, 
+        status, 
+        parsedAssigneeId,  // Use the parsed integer
+        start_date, 
+        end_date
+      ]
     );
 
-    console.log('Task created successfully:', result.rows[0]);
+    console.log("✅ Task created successfully:", result.rows[0]);
+    console.log("✅ Task assignee_id in database:", result.rows[0].assignee_id);
+
+    // Get assignee details if assigned
+    let assignee = null;
+    if (parsedAssigneeId) {
+      const assigneeResult = await pool.query(
+        'SELECT id, email FROM "User" WHERE id = $1',
+        [parsedAssigneeId]
+      );
+      if (assigneeResult.rows.length > 0) {
+        assignee = {
+          id: assigneeResult.rows[0].id,
+          email: assigneeResult.rows[0].email,
+          name: getNameFromEmail(assigneeResult.rows[0].email)
+        };
+      }
+    }
 
     res.status(201).json({
       message: 'Task created successfully',
-      task: result.rows[0]
+      task: {
+        ...result.rows[0],
+        assignee
+      }
     });
   } catch (error) {
     console.error('Error creating task:', error);
-    res.status(500).json({ error: 'Failed to create task', details: error.message });
+    console.error('Error details:', error.message);
+    console.error('Error code:', error.code);
+    
+    // Check for specific database errors
+    if (error.code === '23503') { // Foreign key violation
+      if (error.constraint === 'tasks_assignee_id_fkey') {
+        console.error('Foreign key violation: The assignee_id does not exist in User table');
+        return res.status(400).json({ 
+          message: 'Assignee not found in system' 
+        });
+      }
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to create task', 
+      details: error.message 
+    });
   }
 });
 
-// Get all tasks for a project (UPDATED)
+// Get project members for assignee selection
+router.get('/projects/:projectId/members', authenticate, async (req, res) => {
+  const { projectId } = req.params;
+
+  try {
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(projectId, req.user.userId, req.user.role);
+
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const result = await pool.query(
+      `SELECT 
+        u.id,
+        u.email,
+        u.role as user_role,
+        pm.role as project_role,
+        pm.joined_at
+       FROM project_members pm
+       JOIN "User" u ON pm.user_id = u.id
+       WHERE pm.project_id = $1
+       ORDER BY u.email ASC`,
+      [projectId]
+    );
+
+    const members = result.rows.map(row => ({
+      id: row.id,
+      email: row.email,
+      name: getNameFromEmail(row.email),
+      userRole: row.user_role,
+      projectRole: row.project_role,
+      joinedAt: row.joined_at
+    }));
+
+    res.json({ members });
+  } catch (error) {
+    console.error('Error fetching project members:', error);
+    res.status(500).json({ error: 'Failed to fetch project members' });
+  }
+});
+
+// Get all tasks for a project (UPDATED - only allow assigning to project members)
 router.get('/projects/:projectId/tasks', authenticate, async (req, res) => {
   const { projectId } = req.params;
 
@@ -513,23 +676,45 @@ router.get('/projects/:projectId/tasks', authenticate, async (req, res) => {
       return res.status(403).json({ message: 'Access denied: You do not have access to this project' });
     }
 
+    // Get tasks with assignee info (only if assignee is a project member)
     const result = await pool.query(
-      `SELECT t.*, p."project-name" 
+      `SELECT 
+        t.*, 
+        p."project-name",
+        u.id as assignee_user_id,
+        u.email as assignee_email,
+        pm.project_id as assignee_in_project
        FROM tasks t 
        JOIN projects p ON t.project_id = p.project_id 
+       LEFT JOIN "User" u ON t.assignee_id = u.id
+       LEFT JOIN project_members pm ON t.assignee_id = pm.user_id AND pm.project_id = t.project_id
        WHERE t.project_id = $1 
        ORDER BY t.task_id DESC`,
       [projectId]
     );
 
-    console.log(`Found ${result.rows.length} tasks for project ${projectId}`);
+    // Transform the results to include assignee object
+    const tasks = result.rows.map(task => ({
+      ...task,
+      assignee: task.assignee_user_id && task.assignee_in_project ? {
+        id: task.assignee_user_id,
+        email: task.assignee_email,
+        name: getNameFromEmail(task.assignee_email),
+        isProjectMember: true
+      } : null
+    }));
 
-    res.json({ tasks: result.rows });
+    console.log(`Found ${tasks.length} tasks for project ${projectId}`);
+
+    res.json({ tasks });
+
   } catch (error) {
     console.error('Error fetching tasks:', error);
     res.status(500).json({ error: 'Failed to fetch tasks', details: error.message });
   }
 });
+
+
 
 // Get task by ID (UPDATED)
 router.get('/tasks/:id', authenticate, async (req, res) => {
@@ -564,12 +749,110 @@ router.get('/tasks/:id', authenticate, async (req, res) => {
   }
 });
 
-// Update task (UPDATED)
-router.put('/tasks/:id', authenticate, async (req, res) => {
+
+// Update task assignee
+router.patch('/tasks/:id/assignee', authenticate, async (req, res) => {
   const { id } = req.params;
-  const { task_name, task_description, project_id } = req.body;
+  const { assignee_id } = req.body;  // This might be string
 
   try {
+    console.log("🔍 Update assignee request:", { taskId: id, assignee_id, type: typeof assignee_id });
+
+    // Get the task first to check project access
+    const taskCheck = await pool.query(
+      `SELECT t.*, p.project_id FROM tasks t 
+       JOIN projects p ON t.project_id = p.project_id 
+       WHERE t.task_id = $1`,
+      [id]
+    );
+
+    if (taskCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
+    const task = taskCheck.rows[0];
+    const projectId = task.project_id;
+
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(projectId, req.user.userId, req.user.role);
+
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Parse assignee_id to integer if provided
+    let parsedAssigneeId = null;
+    if (assignee_id !== undefined && assignee_id !== null && assignee_id !== '') {
+      parsedAssigneeId = parseInt(assignee_id);
+      console.log("🔍 Parsed assignee_id:", parsedAssigneeId);
+      
+      if (isNaN(parsedAssigneeId)) {
+        return res.status(400).json({ 
+          message: 'Invalid assignee ID format' 
+        });
+      }
+
+      // Check if assignee is a project member
+      const isProjectMember = await pool.query(
+        'SELECT * FROM project_members WHERE project_id = $1 AND user_id = $2',
+        [projectId, parsedAssigneeId]
+      );
+
+      if (isProjectMember.rows.length === 0) {
+        return res.status(400).json({ 
+          message: 'Assignee must be a member of the project' 
+        });
+      }
+    }
+
+    // Update task assignee
+    const result = await pool.query(
+      `UPDATE tasks 
+       SET assignee_id = $1 
+       WHERE task_id = $2 
+       RETURNING *`,
+      [parsedAssigneeId, id]  // Use parsed integer
+    );
+
+    console.log("✅ Task assignee updated:", result.rows[0]);
+
+    // Get assignee details if assigned
+    let assignee = null;
+    if (parsedAssigneeId) {
+      const assigneeResult = await pool.query(
+        'SELECT id, email FROM "User" WHERE id = $1',
+        [parsedAssigneeId]
+      );
+      if (assigneeResult.rows.length > 0) {
+        assignee = {
+          id: assigneeResult.rows[0].id,
+          email: assigneeResult.rows[0].email,
+          name: getNameFromEmail(assigneeResult.rows[0].email)
+        };
+      }
+    }
+
+    res.json({
+      message: 'Task assignee updated successfully',
+      task: {
+        ...result.rows[0],
+        assignee
+      }
+    });
+  } catch (error) {
+    console.error('Error updating task assignee:', error);
+    res.status(500).json({ error: 'Failed to update task assignee' });
+  }
+});
+
+// Update task dates
+router.patch('/tasks/:id/dates', authenticate, async (req, res) => {
+  const { id } = req.params;
+  const { start_date, end_date } = req.body;
+
+  try {
+    console.log('Update task dates request:', { taskId: id, start_date, end_date, userId: req.user.userId });
+
     // Get the task first to check project access
     const taskCheck = await pool.query(
       `SELECT t.*, p.project_id FROM tasks t 
@@ -591,24 +874,129 @@ router.put('/tasks/:id', authenticate, async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
+    // Update task dates
     const result = await pool.query(
       `UPDATE tasks 
-       SET task_name = $1, "task-description" = $2, project_id = $3 
-       WHERE task_id = $4 
+       SET "start-date" = $1, "end-date" = $2
+       WHERE task_id = $3 
        RETURNING *`,
-      [task_name, task_description, project_id, id]
+      [start_date || null, end_date || null, id]
     );
+
+    console.log('Task dates updated successfully:', result.rows[0]);
+
+    res.json({
+      message: 'Task dates updated successfully',
+      task: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error updating task dates:', error);
+    res.status(500).json({ error: 'Failed to update task dates', details: error.message });
+  }
+});
+
+// Update task (UPDATED)
+// Update task (COMPREHENSIVE UPDATE)
+// Update task (COMPREHENSIVE UPDATE - validate assignee is project member)
+router.put('/tasks/:id', authenticate, async (req, res) => {
+  const { id } = req.params;
+  const { 
+    task_name, 
+    task_description, 
+    project_id,
+    assignee_id,
+    start_date,
+    end_date
+  } = req.body;
+
+  try {
+    // Get the task first to check project access
+    const taskCheck = await pool.query(
+      `SELECT t.*, p.project_id FROM tasks t 
+       JOIN projects p ON t.project_id = p.project_id 
+       WHERE t.task_id = $1`,
+      [id]
+    );
+
+    if (taskCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
+    const task = taskCheck.rows[0];
+    const currentProjectId = task.project_id;
+
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(currentProjectId, req.user.userId, req.user.role);
+
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // If assignee_id is provided, check if user is a project member
+    if (assignee_id !== undefined && assignee_id !== null) {
+      const isProjectMember = await pool.query(
+        'SELECT * FROM project_members WHERE project_id = $1 AND user_id = $2',
+        [currentProjectId, assignee_id]
+      );
+
+      if (isProjectMember.rows.length === 0) {
+        return res.status(400).json({ 
+          message: 'Assignee must be a member of the project' 
+        });
+      }
+    }
+
+    const result = await pool.query(
+      `UPDATE tasks 
+       SET task_name = COALESCE($1, task_name),
+           "task-description" = COALESCE($2, "task-description"),
+           assignee_id = $3,
+           "start-date" = COALESCE($4, "start-date"),
+           "end-date" = COALESCE($5, "end-date")
+       WHERE task_id = $6 
+       RETURNING *`,
+      [
+        task_name, 
+        task_description,
+        assignee_id !== undefined ? assignee_id : task.assignee_id,
+        start_date,
+        end_date,
+        id
+      ]
+    );
+
+    // Get assignee details if assigned
+    let assignee = null;
+    const finalAssigneeId = assignee_id !== undefined ? assignee_id : task.assignee_id;
+    
+    if (finalAssigneeId) {
+      const assigneeResult = await pool.query(
+        'SELECT id, email FROM "User" WHERE id = $1',
+        [finalAssigneeId]
+      );
+      if (assigneeResult.rows.length > 0) {
+        assignee = {
+          id: assigneeResult.rows[0].id,
+          email: assigneeResult.rows[0].email,
+          name: getNameFromEmail(assigneeResult.rows[0].email)
+        };
+      }
+    }
+
+    const updatedTask = {
+      ...result.rows[0],
+      assignee
+    };
 
     res.json({
       message: 'Task updated successfully',
-      task: result.rows[0]
+      task: updatedTask
     });
   } catch (error) {
     console.error('Error updating task:', error);
     res.status(500).json({ error: 'Failed to update task' });
   }
 });
-
 // Update task status - NEW ENDPOINT FOR DRAG & DROP
 router.patch('/tasks/:id/status', authenticate, async (req, res) => {
   const { id } = req.params;
@@ -665,6 +1053,7 @@ router.patch('/tasks/:id/status', authenticate, async (req, res) => {
   }
 });
 
+// Delete task (UPDATED)
 // Delete task (UPDATED)
 router.delete('/tasks/:id', authenticate, async (req, res) => {
   const { id } = req.params;
@@ -736,6 +1125,55 @@ router.get('/dashboard/stats', authenticate, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+  }
+});
+
+
+// ==================== GLOBAL STATISTICS ====================
+
+router.get('/statistics/summary', authenticate, async (req, res) => {
+  const userId = req.user.userId;
+  const role = req.user.role;
+
+  try {
+    let projectCondition = '';
+    let params = [];
+
+    if (role !== 'ADMIN') {
+      projectCondition = `
+        WHERE p.project_id IN (
+          SELECT project_id FROM project_members WHERE user_id = $1
+        )
+      `;
+      params = [userId];
+    }
+
+    const result = await pool.query(`
+      SELECT
+        COUNT(DISTINCT p.project_id) AS total_projects,
+        COUNT(t.task_id) AS total_tasks,
+        COUNT(t.task_id) FILTER (WHERE t.status = 'done') AS completed_tasks
+      FROM projects p
+      LEFT JOIN tasks t ON p.project_id = t.project_id
+      ${projectCondition}
+    `, params);
+
+    const row = result.rows[0];
+
+    const completionRate = row.total_tasks > 0
+      ? Math.round((row.completed_tasks / row.total_tasks) * 100)
+      : 0;
+
+    res.json({
+      totalProjects: Number(row.total_projects),
+      totalTasks: Number(row.total_tasks),
+      completedTasks: Number(row.completed_tasks),
+      completionRate
+    });
+
+  } catch (error) {
+    console.error('Global statistics error:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics summary' });
   }
 });
 
@@ -819,4 +1257,209 @@ router.get('/profile', authenticate, async (req, res) => {
   }
 });
 
+// Add this endpoint to your backend
+router.get('/statistics/project/:projectId', authenticate, async (req, res) => {
+    const { projectId } = req.params;
+    const userId = req.user.userId;
+    const role = req.user.role;
+
+    try {
+        // Check if user has access to this project
+        const hasAccess = await hasProjectAccess(projectId, userId, role);
+        
+        if (!hasAccess) {
+            return res.status(403).json({ message: 'Access denied' });
+        }
+
+        // 1. Get basic project info
+        const projectResult = await pool.query(
+            `SELECT * FROM projects WHERE project_id = $1`,
+            [projectId]
+        );
+        
+        if (projectResult.rows.length === 0) {
+            return res.status(404).json({ message: 'Project not found' });
+        }
+
+        const project = projectResult.rows[0];
+        
+        // Parse dates - handle empty or invalid dates
+        let startDate, endDate;
+        try {
+            startDate = project['start-date'] ? new Date(project['start-date']) : new Date();
+            endDate = project['end-date'] ? new Date(project['end-date']) : new Date();
+        } catch (error) {
+            console.error('Error parsing dates:', error);
+            startDate = new Date();
+            endDate = new Date();
+        }
+
+        const today = new Date();
+        
+        // Calculate time-related metrics
+        const projectDuration = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
+        const daysElapsed = Math.min(Math.max(0, Math.ceil((today - startDate) / (1000 * 60 * 60 * 24))), projectDuration);
+        const daysRemaining = Math.max(0, projectDuration - daysElapsed);
+        const progressPercentage = projectDuration > 0 ? Math.round((daysElapsed / projectDuration) * 100) : 0;
+
+        // 2. Get task statistics
+        const tasksResult = await pool.query(
+            `SELECT 
+                COUNT(*) as total_tasks,
+                COUNT(*) FILTER (WHERE status = 'todo') as todo_tasks,
+                COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress_tasks,
+                COUNT(*) FILTER (WHERE status = 'done') as done_tasks,
+                COUNT(*) FILTER (WHERE assignee_id IS NOT NULL) as assigned_tasks,
+                COUNT(*) FILTER (WHERE assignee_id IS NULL) as unassigned_tasks
+             FROM tasks 
+             WHERE project_id = $1`,
+            [projectId]
+        );
+
+        const tasks = tasksResult.rows[0];
+        const totalTasks = Number(tasks.total_tasks) || 0;
+        const doneTasks = Number(tasks.done_tasks) || 0;
+        const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+        // 3. Calculate average tasks per day
+        const daysSinceStart = Math.max(1, daysElapsed);
+        const avgTasksPerDay = totalTasks > 0 ? parseFloat((totalTasks / daysSinceStart).toFixed(1)) : 0;
+
+        // 4. Get task status distribution for charts
+        const statusDistribution = [
+            {
+                name: 'To Do',
+                value: Number(tasks.todo_tasks) || 0,
+                color: '#ff6b6b'
+            },
+            {
+                name: 'In Progress',
+                value: Number(tasks.in_progress_tasks) || 0,
+                color: '#ffd93d'
+            },
+            {
+                name: 'Done',
+                value: Number(tasks.done_tasks) || 0,
+                color: '#4ecdc4'
+            }
+        ];
+
+        // 5. Get assignment distribution (assigned vs unassigned)
+        const assignmentDistribution = [
+            {
+                name: 'Assigned',
+                value: Number(tasks.assigned_tasks) || 0,
+                color: '#667eea'
+            },
+            {
+                name: 'Unassigned',
+                value: Number(tasks.unassigned_tasks) || 0,
+                color: '#c7ceea'
+            }
+        ];
+
+        // 6. Get tasks created per day for the last 30 days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const dailyStatsResult = await pool.query(
+            `SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as tasks_created,
+                COUNT(*) FILTER (WHERE status = 'done') as tasks_completed
+             FROM tasks 
+             WHERE project_id = $1 
+                AND created_at >= $2
+             GROUP BY DATE(created_at)
+             ORDER BY date`,
+            [projectId, thirtyDaysAgo]
+        );
+
+        // Prepare daily tasks data for chart
+        const dailyTasks = [];
+        for (let i = 0; i < 30; i++) {
+            const date = new Date();
+            date.setDate(date.getDate() - (29 - i));
+            const dateStr = date.toISOString().split('T')[0];
+            
+            const dayData = dailyStatsResult.rows.find(row => {
+                if (!row.date) return false;
+                const rowDate = new Date(row.date).toISOString().split('T')[0];
+                return rowDate === dateStr;
+            });
+            
+            dailyTasks.push({
+                date: dateStr,
+                tasksCreated: dayData ? Number(dayData.tasks_created) : 0,
+                tasksCompleted: dayData ? Number(dayData.tasks_completed) : 0
+            });
+        }
+
+        // 7. Get member contribution statistics
+        const memberContribution = await pool.query(
+            `SELECT 
+                u.id,
+                u.email,
+                COUNT(t.task_id) as tasks_assigned,
+                COUNT(t.task_id) FILTER (WHERE t.status = 'done') as tasks_completed
+             FROM project_members pm
+             JOIN "User" u ON pm.user_id = u.id
+             LEFT JOIN tasks t ON t.assignee_id = u.id AND t.project_id = $1
+             WHERE pm.project_id = $1
+             GROUP BY u.id, u.email
+             ORDER BY tasks_assigned DESC`,
+            [projectId]
+        );
+
+        const memberStats = memberContribution.rows.map(row => ({
+            id: row.id,
+            email: row.email,
+            name: row.email ? row.email.split('@')[0].replace(/\./g, ' ') : 'Unknown',
+            tasksAssigned: Number(row.tasks_assigned) || 0,
+            tasksCompleted: Number(row.tasks_completed) || 0,
+            completionRate: row.tasks_assigned > 0 
+                ? Math.round((row.tasks_completed / row.tasks_assigned) * 100) 
+                : 0
+        }));
+
+        // 8. Get project members count
+        const membersResult = await pool.query(
+            `SELECT COUNT(*) as total_members FROM project_members WHERE project_id = $1`,
+            [projectId]
+        );
+        const totalMembers = Number(membersResult.rows[0]?.total_members) || 0;
+
+        // Return all statistics
+        res.json({
+            totalTasks: totalTasks,
+            todoTasks: Number(tasks.todo_tasks) || 0,
+            inProgressTasks: Number(tasks.in_progress_tasks) || 0,
+            doneTasks: doneTasks,
+            completionRate: completionRate,
+            avgTasksPerDay: avgTasksPerDay,
+            projectDuration: projectDuration,
+            daysRemaining: daysRemaining,
+            daysElapsed: daysElapsed,
+            progressPercentage: progressPercentage,
+            tasksDistribution: statusDistribution,
+            assignmentDistribution: assignmentDistribution,
+            dailyTasks: dailyTasks,
+            memberStats: memberStats,
+            totalMembers: totalMembers,
+            assignedTasks: Number(tasks.assigned_tasks) || 0,
+            unassignedTasks: Number(tasks.unassigned_tasks) || 0,
+            projectName: project['project-name'] || 'Unnamed Project',
+            startDate: project['start-date'] || 'Not set',
+            endDate: project['end-date'] || 'Not set',
+            lastUpdated: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('Error fetching project statistics:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch project statistics',
+            details: error.message 
+        });
+    }
+});
 module.exports = router;
