@@ -1461,4 +1461,189 @@ router.get('/statistics/project/:projectId', authenticate, async (req, res) => {
         });
     }
 });
+
+
+//member statistics 
+
+// Get statistics for a specific member across all projects
+// Get statistics for a specific member across all projects
+router.get('/statistics/member/:memberId', authenticate, async (req, res) => {
+    const { memberId } = req.params;
+    const userId = req.user.userId;
+    const role = req.user.role;
+
+    try {
+        // Verify the requesting user has access to view this member's stats
+        // Admins can view anyone, regular users can only view their own stats
+        if (role !== 'ADMIN' && userId !== parseInt(memberId)) {
+            return res.status(403).json({ message: 'Access denied' });
+        }
+
+        // 1. Get member basic info
+        const memberResult = await pool.query(
+            `SELECT id, email, role FROM "User" WHERE id = $1`,
+            [memberId]
+        );
+        
+        if (memberResult.rows.length === 0) {
+            return res.status(404).json({ message: 'Member not found' });
+        }
+
+        const member = memberResult.rows[0];
+
+        // 2. Get all projects where this member has tasks assigned OR is a project member
+        const projectsQuery = `
+            SELECT DISTINCT
+                p.project_id,
+                p."project-name" as project_name,
+                p."start-date" as start_date,
+                p."end-date" as end_date
+            FROM projects p
+            WHERE p.project_id IN (
+                -- Projects where member has tasks
+                SELECT DISTINCT project_id 
+                FROM tasks 
+                WHERE assignee_id = $1
+                UNION
+                -- Projects where member is a project member
+                SELECT DISTINCT project_id 
+                FROM project_members 
+                WHERE user_id = $1
+            )
+            ORDER BY p.project_id DESC
+        `;
+        
+        const projectsResult = await pool.query(projectsQuery, [memberId]);
+        
+        if (projectsResult.rows.length === 0) {
+            // Member has no projects or tasks
+            return res.json({
+                member: {
+                    id: member.id,
+                    email: member.email,
+                    role: member.role,
+                    name: member.email ? member.email.split('@')[0].replace(/\./g, ' ') : `Member ${member.id}`
+                },
+                summary: {
+                    totalProjects: 0,
+                    totalTasks: 0,
+                    completedTasks: 0,
+                    overallCompletionRate: 0,
+                    avgTasksPerDay: 0,
+                    productivity: 'Low'
+                },
+                projects: []
+            });
+        }
+
+        const projects = [];
+
+        // 3. For each project, get the member's task statistics
+        for (const project of projectsResult.rows) {
+            const tasksResult = await pool.query(
+                `SELECT 
+                    COUNT(*) as total_tasks,
+                    COUNT(*) FILTER (WHERE status = 'todo') as todo_tasks,
+                    COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress_tasks,
+                    COUNT(*) FILTER (WHERE status = 'done') as done_tasks
+                 FROM tasks 
+                 WHERE project_id = $1 AND assignee_id = $2`,
+                [project.project_id, memberId]
+            );
+
+            const tasks = tasksResult.rows[0];
+            const totalTasks = Number(tasks.total_tasks) || 0;
+            const doneTasks = Number(tasks.done_tasks) || 0;
+            const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+            // Calculate time-related metrics
+            let startDate, endDate;
+            try {
+                startDate = project.start_date ? new Date(project.start_date) : new Date();
+                endDate = project.end_date ? new Date(project.end_date) : new Date();
+            } catch (error) {
+                startDate = new Date();
+                endDate = new Date();
+            }
+
+            const today = new Date();
+            const projectDuration = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
+            const daysElapsed = Math.min(Math.max(0, Math.ceil((today - startDate) / (1000 * 60 * 60 * 24))), projectDuration);
+            const daysRemaining = Math.max(0, projectDuration - daysElapsed);
+            const progressPercentage = projectDuration > 0 ? Math.round((daysElapsed / projectDuration) * 100) : 0;
+
+            // Only include projects where the member has tasks
+            if (totalTasks > 0) {
+                projects.push({
+                    projectId: project.project_id,
+                    projectName: project.project_name || 'Unnamed Project',
+                    totalTasks: totalTasks,
+                    todoTasks: Number(tasks.todo_tasks) || 0,
+                    inProgressTasks: Number(tasks.in_progress_tasks) || 0,
+                    doneTasks: doneTasks,
+                    completionRate: completionRate,
+                    projectDuration: projectDuration,
+                    daysElapsed: daysElapsed,
+                    daysRemaining: daysRemaining,
+                    progressPercentage: progressPercentage,
+                    assignedTasks: totalTasks,
+                    unassignedTasks: 0, // For member view, all shown tasks are assigned to them
+                    totalMembers: 0 // We can add this if needed
+                });
+            }
+        }
+
+        // 4. Calculate overall statistics
+        const totalTasks = projects.reduce((sum, p) => sum + p.totalTasks, 0);
+        const completedTasks = projects.reduce((sum, p) => sum + p.doneTasks, 0);
+        const overallCompletionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+        
+        // Calculate avg tasks per day
+        // Get the earliest task creation date for this member
+        const earliestTaskResult = await pool.query(
+            `SELECT MIN(created_at) as earliest_date 
+             FROM tasks 
+             WHERE assignee_id = $1 AND created_at IS NOT NULL`,
+            [memberId]
+        );
+
+        let avgTasksPerDay = 0;
+        if (earliestTaskResult.rows[0]?.earliest_date) {
+            const earliestDate = new Date(earliestTaskResult.rows[0].earliest_date);
+            const today = new Date();
+            const daysSinceFirstTask = Math.max(1, Math.ceil((today - earliestDate) / (1000 * 60 * 60 * 24)));
+            avgTasksPerDay = totalTasks > 0 ? parseFloat((totalTasks / daysSinceFirstTask).toFixed(1)) : 0;
+        } else {
+            // Fallback: use 30 days if no task dates available
+            avgTasksPerDay = totalTasks > 0 ? parseFloat((totalTasks / 30).toFixed(1)) : 0;
+        }
+
+        const productivity = avgTasksPerDay > 3 ? 'High' : avgTasksPerDay > 1 ? 'Medium' : 'Low';
+
+        res.json({
+            member: {
+                id: member.id,
+                email: member.email,
+                role: member.role,
+                name: member.email ? member.email.split('@')[0].replace(/\./g, ' ') : `Member ${member.id}`
+            },
+            summary: {
+                totalProjects: projects.length,
+                totalTasks: totalTasks,
+                completedTasks: completedTasks,
+                overallCompletionRate: overallCompletionRate,
+                avgTasksPerDay: avgTasksPerDay,
+                productivity: productivity
+            },
+            projects: projects
+        });
+
+    } catch (error) {
+        console.error('Error fetching member statistics:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch member statistics',
+            details: error.message 
+        });
+    }
+});
 module.exports = router;
