@@ -9,6 +9,7 @@ const nodemailer = require('nodemailer');
 // ... your existing middleware and configurations ...
 
 JWT_SECRET = '12345';
+JWT_REFRESH_SECRET = '123456';
 // Middleware to authenticate and extract user from JWT
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -97,39 +98,91 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+
+router.post('/refresh-token', async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(401).json({ message: 'No refresh token provided' });
+  }
 
   try {
-    // Check if the user exists
-    const result = await pool.query('SELECT * FROM "User" WHERE email = $1', [email]);
+    const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
+
+    const result = await pool.query(
+      'SELECT * FROM "User" WHERE id = $1 AND refresh_token = $2',
+      [decoded.userId, refreshToken]
+    );
+
     const user = result.rows[0];
-
     if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(403).json({ message: 'Invalid refresh token' });
     }
 
-    // Compare the password with the stored hashed password
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
-
-    // Generate a PROPER JWT token (not mock)
-    const token = jwt.sign(
+    const newAccessToken = jwt.sign(
       {
         userId: user.id,
         role: user.role,
         email: user.email
       },
       JWT_SECRET,
-      { expiresIn: '72h' }
+      { expiresIn: '15m' }
+    );
+
+    res.json({ accessToken: newAccessToken });
+  } catch (err) {
+    return res.status(403).json({ message: 'Refresh token expired or invalid' });
+  }
+});
+
+
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM "User" WHERE email = $1',
+      [email]
+    );
+    const user = result.rows[0];
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    // ✅ Access Token (SHORT)
+    const accessToken = jwt.sign(
+      {
+        userId: user.id,
+        role: user.role,
+        email: user.email
+      },
+      JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    // ✅ Refresh Token (LONG)
+    const refreshToken = jwt.sign(
+      { userId: user.id },
+      JWT_REFRESH_SECRET,
+      { expiresIn: '9d' }
+    );
+
+    // OPTIONAL (recommended): store refresh token in DB
+    await pool.query(
+      'UPDATE "User" SET refresh_token = $1 WHERE id = $2',
+      [refreshToken, user.id]
     );
 
     res.status(200).json({
       message: 'Login successful',
-      token,
+      accessToken,
+      refreshToken,
       role: user.role,
       user_id: user.id,
       email: user.email
@@ -139,6 +192,7 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ error: 'Login failed' });
   }
 });
+
 
 
 // Get users with role = 'member'
