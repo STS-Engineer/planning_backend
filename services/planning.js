@@ -250,32 +250,6 @@ const getNameFromEmail = (email) => {
   return formattedName;
 };
 
-
-// Helper to get user details for assignee
-const getUserDetails = async (userId) => {
-  if (!userId) return null;
-  
-  try {
-    const result = await pool.query(
-      'SELECT id, email, role FROM "User" WHERE id = $1',
-      [userId]
-    );
-    
-    if (result.rows.length === 0) return null;
-    
-    const user = result.rows[0];
-    return {
-      id: user.id,
-      email: user.email,
-      name: getNameFromEmail(user.email),
-      role: user.role
-    };
-  } catch (error) {
-    console.error('Error fetching user details:', error);
-    return null;
-  }
-};
-
 // Create a new project
 router.post('/projects', authenticate, async (req, res) => {
   const client = await pool.connect();
@@ -343,8 +317,6 @@ router.post('/projects', authenticate, async (req, res) => {
   }
 });
 
-
-
 // Get projects for logged-in member
 router.get('/api/my-projects', authenticate, async (req, res) => {
   try {
@@ -364,9 +336,6 @@ router.get('/api/my-projects', authenticate, async (req, res) => {
   }
 });
 
-
-
-// Get all projects for a user
 // Get all projects for a user
 router.get('/projects', authenticate, async (req, res) => {
   try {
@@ -436,7 +405,6 @@ router.get('/projects', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch projects' });
   }
 });
-
 
 // Get project by ID
 router.get('/projects/:id', authenticate, async (req, res) => {
@@ -1700,4 +1668,529 @@ router.get('/statistics/member/:memberId', authenticate, async (req, res) => {
         });
     }
 });
+
+// ==================== TIMELINE STATISTICS ENDPOINTS ====================
+
+// Get project timeline data (daily progress over time)
+router.get('/statistics/project/:projectId/timeline', authenticate, async (req, res) => {
+    const { projectId } = req.params;
+    const userId = req.user.userId;
+    const role = req.user.role;
+
+    try {
+        // Check if user has access to this project
+        const hasAccess = await hasProjectAccess(projectId, userId, role);
+        
+        if (!hasAccess) {
+            return res.status(403).json({ message: 'Access denied' });
+        }
+
+        // Get project details
+        const projectResult = await pool.query(
+            `SELECT * FROM projects WHERE project_id = $1`,
+            [projectId]
+        );
+        
+        if (projectResult.rows.length === 0) {
+            return res.status(404).json({ message: 'Project not found' });
+        }
+
+        const project = projectResult.rows[0];
+        const startDate = project['start-date'] ? new Date(project['start-date']) : new Date();
+        const today = new Date();
+
+        // Calculate days since project started
+        const daysSinceStart = Math.max(1, Math.ceil((today - startDate) / (1000 * 60 * 60 * 24)));
+        const daysToShow = Math.min(daysSinceStart, 30); // Show max 30 days
+
+        // Get daily task statistics
+        const timelineResult = await pool.query(
+            `SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as total_tasks,
+                COUNT(*) FILTER (WHERE status = 'done') as completed_tasks,
+                COUNT(*) FILTER (WHERE status = 'todo') as todo_tasks,
+                COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress_tasks,
+                COUNT(DISTINCT assignee_id) as active_members
+             FROM tasks 
+             WHERE project_id = $1 
+                AND created_at >= $2
+             GROUP BY DATE(created_at)
+             ORDER BY date`,
+            [projectId, new Date(today.getTime() - (daysToShow * 24 * 60 * 60 * 1000))]
+        );
+
+        // Calculate cumulative progress
+        let cumulativeTasks = 0;
+        let cumulativeCompleted = 0;
+        
+        const timelineData = [];
+        for (let i = 0; i < daysToShow; i++) {
+            const date = new Date(today);
+            date.setDate(date.getDate() - (daysToShow - 1 - i));
+            const dateStr = date.toISOString().split('T')[0];
+            const formattedDate = date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric' 
+            });
+
+            const dayData = timelineResult.rows.find(row => {
+                if (!row.date) return false;
+                const rowDate = new Date(row.date).toISOString().split('T')[0];
+                return rowDate === dateStr;
+            });
+
+            // Update cumulative counts
+            if (dayData) {
+                cumulativeTasks += Number(dayData.total_tasks) || 0;
+                cumulativeCompleted += Number(dayData.completed_tasks) || 0;
+            }
+
+            // Calculate daily metrics
+            const totalProjectTasks = await pool.query(
+                `SELECT COUNT(*) as total FROM tasks WHERE project_id = $1`,
+                [projectId]
+            );
+            const projectTotalTasks = Number(totalProjectTasks.rows[0]?.total) || 0;
+
+            const progress = projectTotalTasks > 0 
+                ? Math.round((cumulativeCompleted / projectTotalTasks) * 100) 
+                : 0;
+
+            timelineData.push({
+                date: formattedDate,
+                fullDate: dateStr,
+                day: i + 1,
+                progress: Math.min(progress, 100),
+                tasksCompleted: cumulativeCompleted,
+                tasksCreated: cumulativeTasks,
+                dailyNewTasks: dayData ? Number(dayData.total_tasks) || 0 : 0,
+                dailyCompletedTasks: dayData ? Number(dayData.completed_tasks) || 0 : 0,
+                activeMembers: dayData ? Number(dayData.active_members) || 0 : 0,
+                todoTasks: dayData ? Number(dayData.todo_tasks) || 0 : 0,
+                inProgressTasks: dayData ? Number(dayData.in_progress_tasks) || 0 : 0
+            });
+        }
+
+        // Calculate timeline insights
+        const insights = {
+            currentProgress: timelineData[timelineData.length - 1]?.progress || 0,
+            averageDailyProgress: calculateAverageDailyProgress(timelineData),
+            peakProgressDay: findPeakProgressDay(timelineData),
+            progressTrend: calculateProgressTrend(timelineData),
+            productivityScore: calculateProductivityScore(timelineData),
+            consistencyScore: calculateConsistencyScore(timelineData)
+        };
+
+        res.json({
+            timelineData: timelineData,
+            insights: insights,
+            projectInfo: {
+                name: project['project-name'],
+                startDate: project['start-date'],
+                totalDays: daysToShow,
+                hasData: timelineData.length > 0
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching project timeline:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch project timeline',
+            details: error.message 
+        });
+    }
+});
+
+// Get aggregated timeline data for all projects
+router.get('/statistics/timeline/aggregated', authenticate, async (req, res) => {
+    const userId = req.user.userId;
+    const role = req.user.role;
+
+    try {
+        let projectCondition = '';
+        let params = [];
+
+        if (role !== 'ADMIN') {
+            projectCondition = `
+                WHERE p.project_id IN (
+                    SELECT project_id FROM project_members WHERE user_id = $1
+                )
+            `;
+            params = [userId];
+        }
+
+        // Get the last 30 days of aggregated data
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const timelineResult = await pool.query(
+            `SELECT 
+                DATE(t.created_at) as date,
+                COUNT(DISTINCT t.project_id) as active_projects,
+                COUNT(t.task_id) as total_tasks,
+                COUNT(t.task_id) FILTER (WHERE t.status = 'done') as completed_tasks,
+                COUNT(DISTINCT t.assignee_id) as active_members
+             FROM tasks t
+             JOIN projects p ON t.project_id = p.project_id
+             ${projectCondition}
+             WHERE t.created_at >= $${params.length + 1}
+             GROUP BY DATE(t.created_at)
+             ORDER BY date`,
+            [...params, thirtyDaysAgo]
+        );
+
+        // Process aggregated timeline data
+        const timelineData = [];
+        let cumulativeTasks = 0;
+        let cumulativeCompleted = 0;
+        
+        for (let i = 0; i < 30; i++) {
+            const date = new Date(thirtyDaysAgo);
+            date.setDate(date.getDate() + i);
+            const dateStr = date.toISOString().split('T')[0];
+            const formattedDate = date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric' 
+            });
+
+            const dayData = timelineResult.rows.find(row => {
+                if (!row.date) return false;
+                const rowDate = new Date(row.date).toISOString().split('T')[0];
+                return rowDate === dateStr;
+            });
+
+            // Update cumulative counts
+            if (dayData) {
+                cumulativeTasks += Number(dayData.total_tasks) || 0;
+                cumulativeCompleted += Number(dayData.completed_tasks) || 0;
+            }
+
+            // Calculate overall progress
+            const totalTasksResult = await pool.query(
+                `SELECT COUNT(*) as total 
+                 FROM tasks t
+                 JOIN projects p ON t.project_id = p.project_id
+                 ${projectCondition}`,
+                params
+            );
+            
+            const totalAllTasks = Number(totalTasksResult.rows[0]?.total) || 0;
+            const progress = totalAllTasks > 0 
+                ? Math.round((cumulativeCompleted / totalAllTasks) * 100) 
+                : 0;
+
+            timelineData.push({
+                date: formattedDate,
+                fullDate: dateStr,
+                day: i + 1,
+                totalProgress: Math.min(progress, 100),
+                completedTasks: cumulativeCompleted,
+                newTasks: cumulativeTasks,
+                dailyNewTasks: dayData ? Number(dayData.total_tasks) || 0 : 0,
+                dailyCompletedTasks: dayData ? Number(dayData.completed_tasks) || 0 : 0,
+                activeProjects: dayData ? Number(dayData.active_projects) || 0 : 0,
+                activeMembers: dayData ? Number(dayData.active_members) || 0 : 0,
+                productivity: dayData ? Math.round((Number(dayData.completed_tasks) / Math.max(1, Number(dayData.active_members))) * 100) : 0
+            });
+        }
+
+        // Calculate aggregated insights
+        const insights = {
+            overallProgress: timelineData[timelineData.length - 1]?.totalProgress || 0,
+            averageDailyProductivity: calculateAverageProductivity(timelineData),
+            mostProductiveDay: findMostProductiveDay(timelineData),
+            progressTrend: calculateAggregatedProgressTrend(timelineData),
+            averageActiveProjects: calculateAverageActiveProjects(timelineData),
+            teamEfficiency: calculateTeamEfficiency(timelineData)
+        };
+
+        res.json({
+            timelineData: timelineData,
+            insights: insights,
+            summary: {
+                totalDays: 30,
+                hasData: timelineData.length > 0,
+                dataPoints: timelineResult.rows.length
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching aggregated timeline:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch aggregated timeline',
+            details: error.message 
+        });
+    }
+});
+
+function calculateMemberProgressTrend(timelineData) {
+    if (timelineData.length < 7) return 0;
+    const lastWeek = timelineData.slice(-7);
+    const firstProgress = lastWeek[0].memberProgress || 0;
+    const lastProgress = lastWeek[lastWeek.length - 1].memberProgress || 0;
+    return parseFloat(((lastProgress - firstProgress) / Math.max(1, firstProgress) * 100).toFixed(1));
+}
+
+function calculateConsistencyScore(progressValues) {
+    if (progressValues.length < 2) return 100;
+    const avg = progressValues.reduce((a, b) => a + b, 0) / progressValues.length;
+    const variance = progressValues.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / progressValues.length;
+    return Math.max(0, 100 - Math.sqrt(variance) * 3);
+}
+
+// Add this endpoint to your backend routes
+router.get('/statistics/member/:memberId/timeline', authenticate, async (req, res) => {
+    const { memberId } = req.params;
+    const userId = req.user.userId;
+    const role = req.user.role;
+
+    try {
+        // Verify access (only ADMIN or the member themselves)
+        if (role !== 'ADMIN' && userId.toString() !== memberId) {
+            return res.status(403).json({ message: 'Access denied' });
+        }
+
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        // Get member's daily task statistics
+        const timelineResult = await pool.query(
+            `SELECT 
+                DATE(t.created_at) as date,
+                COUNT(*) as total_tasks,
+                COUNT(*) FILTER (WHERE t.status = 'done') as completed_tasks,
+                COUNT(*) FILTER (WHERE t.status = 'todo') as todo_tasks,
+                COUNT(*) FILTER (WHERE t.status = 'in_progress') as in_progress_tasks,
+                COUNT(DISTINCT t.project_id) as active_projects
+             FROM tasks t
+             WHERE t.assignee_id = $1 
+                AND t.created_at >= $2
+             GROUP BY DATE(t.created_at)
+             ORDER BY date`,
+            [memberId, thirtyDaysAgo]
+        );
+
+        // Get member's overall statistics
+        const memberStatsResult = await pool.query(
+            `SELECT 
+                COUNT(DISTINCT project_id) as total_projects,
+                COUNT(*) as total_tasks_assigned,
+                COUNT(*) FILTER (WHERE status = 'done') as total_tasks_completed
+             FROM tasks 
+             WHERE assignee_id = $1`,
+            [memberId]
+        );
+
+        const memberStats = memberStatsResult.rows[0] || {};
+        
+        // Calculate cumulative progress
+        let cumulativeTasks = 0;
+        let cumulativeCompleted = 0;
+        
+        const timelineData = [];
+        for (let i = 0; i < 30; i++) {
+            const date = new Date(thirtyDaysAgo);
+            date.setDate(date.getDate() + i);
+            const dateStr = date.toISOString().split('T')[0];
+            const formattedDate = date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric' 
+            });
+
+            const dayData = timelineResult.rows.find(row => {
+                if (!row.date) return false;
+                const rowDate = new Date(row.date).toISOString().split('T')[0];
+                return rowDate === dateStr;
+            });
+
+            // Update cumulative counts
+            if (dayData) {
+                cumulativeTasks += Number(dayData.total_tasks) || 0;
+                cumulativeCompleted += Number(dayData.completed_tasks) || 0;
+            }
+
+            // Calculate member-specific metrics
+            const totalAssigned = Number(memberStats.total_tasks_assigned) || 0;
+            const memberProgress = totalAssigned > 0 
+                ? Math.round((cumulativeCompleted / totalAssigned) * 100) 
+                : 0;
+
+            // Calculate productivity
+            const activeProjects = dayData ? Number(dayData.active_projects) || 0 : 0;
+            const dailyCompleted = dayData ? Number(dayData.completed_tasks) || 0 : 0;
+            const dailyProductivity = activeProjects > 0 && dailyCompleted > 0
+                ? Math.round((dailyCompleted / activeProjects) * 100)
+                : 0;
+
+            timelineData.push({
+                date: formattedDate,
+                fullDate: dateStr,
+                day: i + 1,
+                memberProgress: Math.min(memberProgress, 100),
+                memberTasksCompleted: cumulativeCompleted,
+                dailyCompletedTasks: dailyCompleted,
+                memberProductivity: Math.min(dailyProductivity, 100),
+                assignedTasks: totalAssigned,
+                activeProjects: activeProjects,
+                completionRate: Math.min(memberProgress, 100),
+                todoTasks: dayData ? Number(dayData.todo_tasks) || 0 : 0,
+                inProgressTasks: dayData ? Number(dayData.in_progress_tasks) || 0 : 0
+            });
+        }
+
+        // Calculate member insights
+        const insights = {
+            memberProgress: timelineData[timelineData.length - 1]?.memberProgress || 0,
+            averageDailyProgress: calculateAverageDailyProgress(timelineData.map(d => d.memberProgress)),
+            mostProductiveDay: findMostProductiveDay(timelineData),
+            memberProductivity: calculateAverageProductivity(timelineData),
+            activeDays: timelineData.filter(d => d.dailyCompletedTasks > 0).length,
+            progressTrend: calculateMemberProgressTrend(timelineData),
+            consistencyScore: calculateConsistencyScore(timelineData.map(d => d.memberProgress)),
+            avgTasksPerDay: parseFloat((timelineData.reduce((sum, day) => sum + (day.dailyCompletedTasks || 0), 0) / timelineData.length).toFixed(1))
+        };
+
+        res.json({
+            timelineData: timelineData,
+            insights: insights,
+            memberInfo: {
+                totalProjects: memberStats.total_projects || 0,
+                totalTasksAssigned: memberStats.total_tasks_assigned || 0,
+                totalTasksCompleted: memberStats.total_tasks_completed || 0
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching member timeline:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch member timeline',
+            details: error.message 
+        });
+    }
+});
+
+
+// Helper functions for timeline calculations
+function calculateAverageDailyProgress(progressValues) {
+    if (progressValues.length < 2) return 0;
+    const differences = [];
+    for (let i = 1; i < progressValues.length; i++) {
+        differences.push(progressValues[i] - progressValues[i - 1]);
+    }
+    const avg = differences.reduce((a, b) => a + b, 0) / differences.length;
+    return parseFloat(avg.toFixed(1));
+}
+
+
+function findPeakProgressDay(timelineData) {
+    if (timelineData.length === 0) return null;
+    
+    let maxProgress = 0;
+    let peakDay = null;
+    
+    timelineData.forEach(day => {
+        const dailyChange = day.progress - (timelineData.find(d => d.day === day.day - 1)?.progress || 0);
+        if (dailyChange > maxProgress) {
+            maxProgress = dailyChange;
+            peakDay = day;
+        }
+    });
+    
+    return peakDay ? { date: peakDay.date, progressIncrease: maxProgress } : null;
+}
+
+function calculateProgressTrend(timelineData) {
+    if (timelineData.length < 7) return 0;
+    
+    const lastWeek = timelineData.slice(-7);
+    const firstProgress = lastWeek[0].progress || 0;
+    const lastProgress = lastWeek[lastWeek.length - 1].progress || 0;
+    
+    return parseFloat(((lastProgress - firstProgress) / Math.max(1, firstProgress) * 100).toFixed(1));
+}
+
+function calculateProductivityScore(timelineData) {
+    if (timelineData.length === 0) return 0;
+    
+    const completedTasks = timelineData.reduce((sum, day) => sum + (day.dailyCompletedTasks || 0), 0);
+    const totalDays = timelineData.length;
+    
+    return Math.round((completedTasks / totalDays) * 10) / 10; // Score out of 10
+}
+
+function calculateConsistencyScore(timelineData) {
+    if (timelineData.length < 2) return 100;
+    
+    const progressChanges = [];
+    for (let i = 1; i < timelineData.length; i++) {
+        progressChanges.push(timelineData[i].progress - timelineData[i-1].progress);
+    }
+    
+    const avgChange = progressChanges.reduce((a, b) => a + b, 0) / progressChanges.length;
+    const variance = progressChanges.reduce((sum, change) => sum + Math.pow(change - avgChange, 2), 0) / progressChanges.length;
+    
+    // Convert to score (0-100), lower variance = higher consistency
+    const maxVariance = 10; // Assuming max variance of 10% daily change
+    const consistency = Math.max(0, 100 - (variance / maxVariance * 100));
+    
+    return Math.round(consistency);
+}
+
+function calculateAverageProductivity(timelineData) {
+    if (!timelineData.length) return 0;
+    const sum = timelineData.reduce((acc, day) => acc + (day.memberProductivity || 0), 0);
+    return parseFloat((sum / timelineData.length).toFixed(1));
+}
+
+function findMostProductiveDay(timelineData) {
+    if (!timelineData.length) return null;
+    let maxTasks = 0;
+    let productiveDay = null;
+    
+    timelineData.forEach(day => {
+        if (day.dailyCompletedTasks > maxTasks) {
+            maxTasks = day.dailyCompletedTasks;
+            productiveDay = day;
+        }
+    });
+    
+    return productiveDay ? { 
+        date: productiveDay.date, 
+        tasks: productiveDay.dailyCompletedTasks,
+        productivity: productiveDay.memberProductivity 
+    } : null;
+}
+
+
+function calculateAggregatedProgressTrend(timelineData) {
+    if (timelineData.length < 7) return 0;
+    
+    const lastWeek = timelineData.slice(-7);
+    const firstProgress = lastWeek[0].totalProgress || 0;
+    const lastProgress = lastWeek[lastWeek.length - 1].totalProgress || 0;
+    
+    return parseFloat(((lastProgress - firstProgress) / Math.max(1, firstProgress) * 100).toFixed(1));
+}
+
+function calculateAverageActiveProjects(timelineData) {
+    if (timelineData.length === 0) return 0;
+    
+    const total = timelineData.reduce((sum, day) => sum + (day.activeProjects || 0), 0);
+    return parseFloat((total / timelineData.length).toFixed(1));
+}
+
+function calculateTeamEfficiency(timelineData) {
+    if (timelineData.length === 0) return 0;
+    
+    const totalCompleted = timelineData.reduce((sum, day) => sum + (day.dailyCompletedTasks || 0), 0);
+    const totalActiveMembers = timelineData.reduce((sum, day) => sum + (day.activeMembers || 0), 0);
+    
+    if (totalActiveMembers === 0) return 0;
+    
+    return parseFloat((totalCompleted / totalActiveMembers).toFixed(1));
+}
+
+
+
 module.exports = router;
