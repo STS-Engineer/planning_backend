@@ -9,21 +9,16 @@ const server = http.createServer(app);
 const prodformrouter = require('./services/planning');
 const { startWeeklyReminderJob } = require("./jobs/weeklyReminders");
 
-// ✅ Enhanced CORS config
+
+
 app.use(cors({
-  origin: [
-    'https://sts-project-management.azurewebsites.net',
-    'https://plan-back.azurewebsites.net'  // Allow backend to call itself if needed
-  ],
+  origin: 'https://sts-project-management.azurewebsites.net',  // frontend domain
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], 
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-  preflightContinue: false,
-  optionsSuccessStatus: 204
+  credentials: true
 }));
 
-// Ensure OPTIONS requests are handled
-app.options('*', cors());
+
 
 // Middleware
 app.use(bodyParser.json({ limit: '50mb' }));
@@ -33,8 +28,8 @@ app.use(express.json());
 // Routes
 app.use('/ajouter', prodformrouter);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
 startWeeklyReminderJob();
+
 
 const PORT = 4000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
