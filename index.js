@@ -13,7 +13,7 @@ const { startWeeklyReminderJob } = require("./jobs/weeklyReminders");
 
 // ✅ CORS config FIRST
 app.use(cors({
-  origin: 'http://localhost:3000',  // frontend domain
+  origin: 'https://sts-project-management.azurewebsites.net',  // frontend domain
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], 
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
