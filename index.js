@@ -1,35 +1,74 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-require('dotenv').config();
+const dotenv = require('dotenv');
 const http = require('http');
 const path = require('path');
+
+dotenv.config();
+
 const app = express();
 const server = http.createServer(app);
+
+// Routers & Jobs
 const prodformrouter = require('./services/planning');
-const { startWeeklyReminderJob } = require("./jobs/weeklyReminders");
+const { startWeeklyReminderJob } = require('./jobs/weeklyReminders');
 
+/* =========================================================
+   CORS CONFIGURATION (MUST BE FIRST)
+========================================================= */
 
-
-app.use(cors({
-  origin: 'https://sts-project-management.azurewebsites.net',  // frontend domain
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], 
+const corsOptions = {
+  origin: 'https://sts-project-management.azurewebsites.net',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+  credentials: true,
+  optionsSuccessStatus: 204
+};
 
+// Apply CORS globally
+app.use(cors(corsOptions));
 
+// Explicitly handle preflight requests
+app.options('*', cors(corsOptions));
 
-// Middleware
+/* =========================================================
+   MIDDLEWARE
+========================================================= */
+
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.json());
 
-// Routes
-app.use('/ajouter', prodformrouter);
+// Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+/* =========================================================
+   ROUTES
+========================================================= */
+
+app.use('/ajouter', prodformrouter);
+
+/* =========================================================
+   HEALTH CHECK (OPTIONAL BUT RECOMMENDED)
+========================================================= */
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK' });
+});
+
+/* =========================================================
+   START JOBS
+========================================================= */
+
 startWeeklyReminderJob();
 
+/* =========================================================
+   SERVER START
+========================================================= */
 
-const PORT = 4000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const PORT = process.env.PORT || 4000;
+
+server.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
