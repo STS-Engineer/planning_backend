@@ -7,13 +7,14 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 const prodformrouter = require('./services/planning');
+const { startWeeklyReminderJob } = require("./jobs/weeklyReminders");
 
 
 
 // ✅ CORS config FIRST
 app.use(cors({
-  origin: 'https://sts-project-management.azurewebsites.net',  // frontend domain
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  origin: 'http://localhost:3000',  // frontend domain
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], 
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
@@ -28,7 +29,7 @@ app.use(express.json());
 // Routes
 app.use('/ajouter', prodformrouter);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
+startWeeklyReminderJob();
 
 
 const PORT = 4000;
