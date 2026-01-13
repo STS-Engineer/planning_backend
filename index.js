@@ -20,18 +20,12 @@ const { startWeeklyReminderJob } = require('./jobs/weeklyReminders');
 
 const corsOptions = {
   origin: 'https://sts-project-management.azurewebsites.net',
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  optionsSuccessStatus: 204
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 };
 
-// Apply CORS globally
 app.use(cors(corsOptions));
-
-// Explicitly handle preflight requests
-app.options('*', cors(corsOptions));
-
 /* =========================================================
    MIDDLEWARE
 ========================================================= */
