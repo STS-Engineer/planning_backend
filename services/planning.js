@@ -6,7 +6,6 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
 
-// ... your existing middleware and configurations ...
 
 JWT_SECRET = '12345';
 JWT_REFRESH_SECRET = '123456';
@@ -514,14 +513,14 @@ const hasProjectAccess = async (projectId, userId, userRole) => {
 
 // Create a new task (UPDATED WITH STATUS)
 router.post('/tasks', authenticate, async (req, res) => {
-  const { 
-    task_name, 
-    task_description, 
-    project_id, 
+  const {
+    task_name,
+    task_description,
+    project_id,
     status = 'todo',
     assignee_id,  // This might be coming as a string
     start_date = null,
-    end_date = null 
+    end_date = null
   } = req.body;
 
   try {
@@ -533,11 +532,11 @@ router.post('/tasks', authenticate, async (req, res) => {
     if (assignee_id !== undefined && assignee_id !== null && assignee_id !== '') {
       parsedAssigneeId = parseInt(assignee_id);
       console.log("🔍 Parsed assignee_id:", parsedAssigneeId, "Type:", typeof parsedAssigneeId);
-      
+
       if (isNaN(parsedAssigneeId)) {
         console.log("❌ Invalid assignee_id format:", assignee_id);
-        return res.status(400).json({ 
-          message: 'Invalid assignee ID format. Must be a number.' 
+        return res.status(400).json({
+          message: 'Invalid assignee ID format. Must be a number.'
         });
       }
     }
@@ -553,7 +552,7 @@ router.post('/tasks', authenticate, async (req, res) => {
     // If assignee_id is provided, validate they are a project member
     if (parsedAssigneeId) {
       console.log("🔍 Validating assignee:", parsedAssigneeId);
-      
+
       const isProjectMember = await pool.query(
         'SELECT * FROM project_members WHERE project_id = $1 AND user_id = $2',
         [project_id, parsedAssigneeId]
@@ -563,8 +562,8 @@ router.post('/tasks', authenticate, async (req, res) => {
 
       if (isProjectMember.rows.length === 0) {
         console.log("❌ Assignee is not a project member");
-        return res.status(400).json({ 
-          message: 'Assignee must be a member of the project' 
+        return res.status(400).json({
+          message: 'Assignee must be a member of the project'
         });
       }
     }
@@ -583,12 +582,12 @@ router.post('/tasks', authenticate, async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7) 
        RETURNING *`,
       [
-        task_name, 
-        task_description, 
-        project_id, 
-        status, 
+        task_name,
+        task_description,
+        project_id,
+        status,
         parsedAssigneeId,  // Use the parsed integer
-        start_date, 
+        start_date,
         end_date
       ]
     );
@@ -623,20 +622,20 @@ router.post('/tasks', authenticate, async (req, res) => {
     console.error('Error creating task:', error);
     console.error('Error details:', error.message);
     console.error('Error code:', error.code);
-    
+
     // Check for specific database errors
     if (error.code === '23503') { // Foreign key violation
       if (error.constraint === 'tasks_assignee_id_fkey') {
         console.error('Foreign key violation: The assignee_id does not exist in User table');
-        return res.status(400).json({ 
-          message: 'Assignee not found in system' 
+        return res.status(400).json({
+          message: 'Assignee not found in system'
         });
       }
     }
-    
-    res.status(500).json({ 
-      error: 'Failed to create task', 
-      details: error.message 
+
+    res.status(500).json({
+      error: 'Failed to create task',
+      details: error.message
     });
   }
 });
@@ -807,10 +806,10 @@ router.patch('/tasks/:id/assignee', authenticate, async (req, res) => {
     if (assignee_id !== undefined && assignee_id !== null && assignee_id !== '') {
       parsedAssigneeId = parseInt(assignee_id);
       console.log("🔍 Parsed assignee_id:", parsedAssigneeId);
-      
+
       if (isNaN(parsedAssigneeId)) {
-        return res.status(400).json({ 
-          message: 'Invalid assignee ID format' 
+        return res.status(400).json({
+          message: 'Invalid assignee ID format'
         });
       }
 
@@ -821,8 +820,8 @@ router.patch('/tasks/:id/assignee', authenticate, async (req, res) => {
       );
 
       if (isProjectMember.rows.length === 0) {
-        return res.status(400).json({ 
-          message: 'Assignee must be a member of the project' 
+        return res.status(400).json({
+          message: 'Assignee must be a member of the project'
         });
       }
     }
@@ -922,9 +921,9 @@ router.patch('/tasks/:id/dates', authenticate, async (req, res) => {
 // Update task (COMPREHENSIVE UPDATE - validate assignee is project member)
 router.put('/tasks/:id', authenticate, async (req, res) => {
   const { id } = req.params;
-  const { 
-    task_name, 
-    task_description, 
+  const {
+    task_name,
+    task_description,
     project_id,
     assignee_id,
     start_date,
@@ -962,8 +961,8 @@ router.put('/tasks/:id', authenticate, async (req, res) => {
       );
 
       if (isProjectMember.rows.length === 0) {
-        return res.status(400).json({ 
-          message: 'Assignee must be a member of the project' 
+        return res.status(400).json({
+          message: 'Assignee must be a member of the project'
         });
       }
     }
@@ -978,7 +977,7 @@ router.put('/tasks/:id', authenticate, async (req, res) => {
        WHERE task_id = $6 
        RETURNING *`,
       [
-        task_name, 
+        task_name,
         task_description,
         assignee_id !== undefined ? assignee_id : task.assignee_id,
         start_date,
@@ -990,7 +989,7 @@ router.put('/tasks/:id', authenticate, async (req, res) => {
     // Get assignee details if assigned
     let assignee = null;
     const finalAssigneeId = assignee_id !== undefined ? assignee_id : task.assignee_id;
-    
+
     if (finalAssigneeId) {
       const assigneeResult = await pool.query(
         'SELECT id, email FROM "User" WHERE id = $1',
@@ -1280,52 +1279,52 @@ router.get('/profile', authenticate, async (req, res) => {
 
 // Add this endpoint to your backend
 router.get('/statistics/project/:projectId', authenticate, async (req, res) => {
-    const { projectId } = req.params;
-    const userId = req.user.userId;
-    const role = req.user.role;
+  const { projectId } = req.params;
+  const userId = req.user.userId;
+  const role = req.user.role;
 
+  try {
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(projectId, userId, role);
+
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // 1. Get basic project info
+    const projectResult = await pool.query(
+      `SELECT * FROM projects WHERE project_id = $1`,
+      [projectId]
+    );
+
+    if (projectResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    const project = projectResult.rows[0];
+
+    // Parse dates - handle empty or invalid dates
+    let startDate, endDate;
     try {
-        // Check if user has access to this project
-        const hasAccess = await hasProjectAccess(projectId, userId, role);
-        
-        if (!hasAccess) {
-            return res.status(403).json({ message: 'Access denied' });
-        }
+      startDate = project['start-date'] ? new Date(project['start-date']) : new Date();
+      endDate = project['end-date'] ? new Date(project['end-date']) : new Date();
+    } catch (error) {
+      console.error('Error parsing dates:', error);
+      startDate = new Date();
+      endDate = new Date();
+    }
 
-        // 1. Get basic project info
-        const projectResult = await pool.query(
-            `SELECT * FROM projects WHERE project_id = $1`,
-            [projectId]
-        );
-        
-        if (projectResult.rows.length === 0) {
-            return res.status(404).json({ message: 'Project not found' });
-        }
+    const today = new Date();
 
-        const project = projectResult.rows[0];
-        
-        // Parse dates - handle empty or invalid dates
-        let startDate, endDate;
-        try {
-            startDate = project['start-date'] ? new Date(project['start-date']) : new Date();
-            endDate = project['end-date'] ? new Date(project['end-date']) : new Date();
-        } catch (error) {
-            console.error('Error parsing dates:', error);
-            startDate = new Date();
-            endDate = new Date();
-        }
+    // Calculate time-related metrics
+    const projectDuration = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
+    const daysElapsed = Math.min(Math.max(0, Math.ceil((today - startDate) / (1000 * 60 * 60 * 24))), projectDuration);
+    const daysRemaining = Math.max(0, projectDuration - daysElapsed);
+    const progressPercentage = projectDuration > 0 ? Math.round((daysElapsed / projectDuration) * 100) : 0;
 
-        const today = new Date();
-        
-        // Calculate time-related metrics
-        const projectDuration = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
-        const daysElapsed = Math.min(Math.max(0, Math.ceil((today - startDate) / (1000 * 60 * 60 * 24))), projectDuration);
-        const daysRemaining = Math.max(0, projectDuration - daysElapsed);
-        const progressPercentage = projectDuration > 0 ? Math.round((daysElapsed / projectDuration) * 100) : 0;
-
-        // 2. Get task statistics
-        const tasksResult = await pool.query(
-            `SELECT 
+    // 2. Get task statistics
+    const tasksResult = await pool.query(
+      `SELECT 
                 COUNT(*) as total_tasks,
                 COUNT(*) FILTER (WHERE status = 'todo') as todo_tasks,
                 COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress_tasks,
@@ -1334,57 +1333,57 @@ router.get('/statistics/project/:projectId', authenticate, async (req, res) => {
                 COUNT(*) FILTER (WHERE assignee_id IS NULL) as unassigned_tasks
              FROM tasks 
              WHERE project_id = $1`,
-            [projectId]
-        );
+      [projectId]
+    );
 
-        const tasks = tasksResult.rows[0];
-        const totalTasks = Number(tasks.total_tasks) || 0;
-        const doneTasks = Number(tasks.done_tasks) || 0;
-        const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+    const tasks = tasksResult.rows[0];
+    const totalTasks = Number(tasks.total_tasks) || 0;
+    const doneTasks = Number(tasks.done_tasks) || 0;
+    const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
-        // 3. Calculate average tasks per day
-        const daysSinceStart = Math.max(1, daysElapsed);
-        const avgTasksPerDay = totalTasks > 0 ? parseFloat((totalTasks / daysSinceStart).toFixed(1)) : 0;
+    // 3. Calculate average tasks per day
+    const daysSinceStart = Math.max(1, daysElapsed);
+    const avgTasksPerDay = totalTasks > 0 ? parseFloat((totalTasks / daysSinceStart).toFixed(1)) : 0;
 
-        // 4. Get task status distribution for charts
-        const statusDistribution = [
-            {
-                name: 'To Do',
-                value: Number(tasks.todo_tasks) || 0,
-                color: '#ff6b6b'
-            },
-            {
-                name: 'In Progress',
-                value: Number(tasks.in_progress_tasks) || 0,
-                color: '#ffd93d'
-            },
-            {
-                name: 'Done',
-                value: Number(tasks.done_tasks) || 0,
-                color: '#4ecdc4'
-            }
-        ];
+    // 4. Get task status distribution for charts
+    const statusDistribution = [
+      {
+        name: 'To Do',
+        value: Number(tasks.todo_tasks) || 0,
+        color: '#ff6b6b'
+      },
+      {
+        name: 'In Progress',
+        value: Number(tasks.in_progress_tasks) || 0,
+        color: '#ffd93d'
+      },
+      {
+        name: 'Done',
+        value: Number(tasks.done_tasks) || 0,
+        color: '#4ecdc4'
+      }
+    ];
 
-        // 5. Get assignment distribution (assigned vs unassigned)
-        const assignmentDistribution = [
-            {
-                name: 'Assigned',
-                value: Number(tasks.assigned_tasks) || 0,
-                color: '#667eea'
-            },
-            {
-                name: 'Unassigned',
-                value: Number(tasks.unassigned_tasks) || 0,
-                color: '#c7ceea'
-            }
-        ];
+    // 5. Get assignment distribution (assigned vs unassigned)
+    const assignmentDistribution = [
+      {
+        name: 'Assigned',
+        value: Number(tasks.assigned_tasks) || 0,
+        color: '#667eea'
+      },
+      {
+        name: 'Unassigned',
+        value: Number(tasks.unassigned_tasks) || 0,
+        color: '#c7ceea'
+      }
+    ];
 
-        // 6. Get tasks created per day for the last 30 days
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // 6. Get tasks created per day for the last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        const dailyStatsResult = await pool.query(
-            `SELECT 
+    const dailyStatsResult = await pool.query(
+      `SELECT 
                 DATE(created_at) as date,
                 COUNT(*) as tasks_created,
                 COUNT(*) FILTER (WHERE status = 'done') as tasks_completed
@@ -1393,32 +1392,32 @@ router.get('/statistics/project/:projectId', authenticate, async (req, res) => {
                 AND created_at >= $2
              GROUP BY DATE(created_at)
              ORDER BY date`,
-            [projectId, thirtyDaysAgo]
-        );
+      [projectId, thirtyDaysAgo]
+    );
 
-        // Prepare daily tasks data for chart
-        const dailyTasks = [];
-        for (let i = 0; i < 30; i++) {
-            const date = new Date();
-            date.setDate(date.getDate() - (29 - i));
-            const dateStr = date.toISOString().split('T')[0];
-            
-            const dayData = dailyStatsResult.rows.find(row => {
-                if (!row.date) return false;
-                const rowDate = new Date(row.date).toISOString().split('T')[0];
-                return rowDate === dateStr;
-            });
-            
-            dailyTasks.push({
-                date: dateStr,
-                tasksCreated: dayData ? Number(dayData.tasks_created) : 0,
-                tasksCompleted: dayData ? Number(dayData.tasks_completed) : 0
-            });
-        }
+    // Prepare daily tasks data for chart
+    const dailyTasks = [];
+    for (let i = 0; i < 30; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - (29 - i));
+      const dateStr = date.toISOString().split('T')[0];
 
-        // 7. Get member contribution statistics
-        const memberContribution = await pool.query(
-            `SELECT 
+      const dayData = dailyStatsResult.rows.find(row => {
+        if (!row.date) return false;
+        const rowDate = new Date(row.date).toISOString().split('T')[0];
+        return rowDate === dateStr;
+      });
+
+      dailyTasks.push({
+        date: dateStr,
+        tasksCreated: dayData ? Number(dayData.tasks_created) : 0,
+        tasksCompleted: dayData ? Number(dayData.tasks_completed) : 0
+      });
+    }
+
+    // 7. Get member contribution statistics
+    const memberContribution = await pool.query(
+      `SELECT 
                 u.id,
                 u.email,
                 COUNT(t.task_id) as tasks_assigned,
@@ -1429,92 +1428,139 @@ router.get('/statistics/project/:projectId', authenticate, async (req, res) => {
              WHERE pm.project_id = $1
              GROUP BY u.id, u.email
              ORDER BY tasks_assigned DESC`,
-            [projectId]
-        );
+      [projectId]
+    );
 
-        const memberStats = memberContribution.rows.map(row => ({
-            id: row.id,
-            email: row.email,
-            name: row.email ? row.email.split('@')[0].replace(/\./g, ' ') : 'Unknown',
-            tasksAssigned: Number(row.tasks_assigned) || 0,
-            tasksCompleted: Number(row.tasks_completed) || 0,
-            completionRate: row.tasks_assigned > 0 
-                ? Math.round((row.tasks_completed / row.tasks_assigned) * 100) 
-                : 0
-        }));
+    const memberStats = memberContribution.rows.map(row => ({
+      id: row.id,
+      email: row.email,
+      name: row.email ? row.email.split('@')[0].replace(/\./g, ' ') : 'Unknown',
+      tasksAssigned: Number(row.tasks_assigned) || 0,
+      tasksCompleted: Number(row.tasks_completed) || 0,
+      completionRate: row.tasks_assigned > 0
+        ? Math.round((row.tasks_completed / row.tasks_assigned) * 100)
+        : 0
+    }));
 
-        // 8. Get project members count
-        const membersResult = await pool.query(
-            `SELECT COUNT(*) as total_members FROM project_members WHERE project_id = $1`,
-            [projectId]
-        );
-        const totalMembers = Number(membersResult.rows[0]?.total_members) || 0;
+    // 8. Get project members count
+    const membersResult = await pool.query(
+      `SELECT COUNT(*) as total_members FROM project_members WHERE project_id = $1`,
+      [projectId]
+    );
+    const totalMembers = Number(membersResult.rows[0]?.total_members) || 0;
 
-        // Return all statistics
-        res.json({
-            totalTasks: totalTasks,
-            todoTasks: Number(tasks.todo_tasks) || 0,
-            inProgressTasks: Number(tasks.in_progress_tasks) || 0,
-            doneTasks: doneTasks,
-            completionRate: completionRate,
-            avgTasksPerDay: avgTasksPerDay,
-            projectDuration: projectDuration,
-            daysRemaining: daysRemaining,
-            daysElapsed: daysElapsed,
-            progressPercentage: progressPercentage,
-            tasksDistribution: statusDistribution,
-            assignmentDistribution: assignmentDistribution,
-            dailyTasks: dailyTasks,
-            memberStats: memberStats,
-            totalMembers: totalMembers,
-            assignedTasks: Number(tasks.assigned_tasks) || 0,
-            unassignedTasks: Number(tasks.unassigned_tasks) || 0,
-            projectName: project['project-name'] || 'Unnamed Project',
-            startDate: project['start-date'] || 'Not set',
-            endDate: project['end-date'] || 'Not set',
-            lastUpdated: new Date().toISOString()
-        });
+    // Return all statistics
+    res.json({
+      totalTasks: totalTasks,
+      todoTasks: Number(tasks.todo_tasks) || 0,
+      inProgressTasks: Number(tasks.in_progress_tasks) || 0,
+      doneTasks: doneTasks,
+      completionRate: completionRate,
+      avgTasksPerDay: avgTasksPerDay,
+      projectDuration: projectDuration,
+      daysRemaining: daysRemaining,
+      daysElapsed: daysElapsed,
+      progressPercentage: progressPercentage,
+      tasksDistribution: statusDistribution,
+      assignmentDistribution: assignmentDistribution,
+      dailyTasks: dailyTasks,
+      memberStats: memberStats,
+      totalMembers: totalMembers,
+      assignedTasks: Number(tasks.assigned_tasks) || 0,
+      unassignedTasks: Number(tasks.unassigned_tasks) || 0,
+      projectName: project['project-name'] || 'Unnamed Project',
+      startDate: project['start-date'] || 'Not set',
+      endDate: project['end-date'] || 'Not set',
+      lastUpdated: new Date().toISOString()
+    });
 
-    } catch (error) {
-        console.error('Error fetching project statistics:', error);
-        res.status(500).json({ 
-            error: 'Failed to fetch project statistics',
-            details: error.message 
-        });
-    }
+  } catch (error) {
+    console.error('Error fetching project statistics:', error);
+    res.status(500).json({
+      error: 'Failed to fetch project statistics',
+      details: error.message
+    });
+  }
 });
 
 
-//member statistics 
+// Update project status (validate/completed/archive)
+router.put('/projects/:id/status', authenticate, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const projectId = req.params.id;
+    const { status } = req.body;
+    const userId = req.user.userId;
+
+    // Validate status
+    const validStatuses = ['active', 'completed', 'validated', 'archived'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status value' });
+    }
+
+    // Check if user has permission (admin or project member)
+    const permissionCheck = await client.query(
+      `SELECT * FROM project_members WHERE project_id = $1 AND user_id = $2`,
+      [projectId, userId]
+    );
+
+    const userRole = req.user.role;
+    if (userRole !== 'ADMIN' && permissionCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized to update project status' });
+    }
+
+    // Update project status - FIXED: Use the status variable, not hardcoded 'completed'
+    const result = await client.query(
+      `UPDATE projects SET status = $1  WHERE project_id = $2 RETURNING *`,
+      [status, projectId] // <-- This was the bug: you had ['completed', projectId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    res.json({
+      message: `Project status updated to ${status}`,
+      project: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Update project status error:', error);
+    res.status(500).json({ error: 'Failed to update project status' });
+  } finally {
+    client.release();
+  }
+});
 
 // Get statistics for a specific member across all projects
 // Get statistics for a specific member across all projects
 router.get('/statistics/member/:memberId', authenticate, async (req, res) => {
-    const { memberId } = req.params;
-    const userId = req.user.userId;
-    const role = req.user.role;
+  const { memberId } = req.params;
+  const userId = req.user.userId;
+  const role = req.user.role;
 
-    try {
-        // Verify the requesting user has access to view this member's stats
-        // Admins can view anyone, regular users can only view their own stats
-        if (role !== 'ADMIN' && userId !== parseInt(memberId)) {
-            return res.status(403).json({ message: 'Access denied' });
-        }
+  try {
+    // Verify the requesting user has access to view this member's stats
+    // Admins can view anyone, regular users can only view their own stats
+    if (role !== 'ADMIN' && userId !== parseInt(memberId)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
 
-        // 1. Get member basic info
-        const memberResult = await pool.query(
-            `SELECT id, email, role FROM "User" WHERE id = $1`,
-            [memberId]
-        );
-        
-        if (memberResult.rows.length === 0) {
-            return res.status(404).json({ message: 'Member not found' });
-        }
+    // 1. Get member basic info
+    const memberResult = await pool.query(
+      `SELECT id, email, role FROM "User" WHERE id = $1`,
+      [memberId]
+    );
 
-        const member = memberResult.rows[0];
+    if (memberResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Member not found' });
+    }
 
-        // 2. Get all projects where this member has tasks assigned OR is a project member
-        const projectsQuery = `
+    const member = memberResult.rows[0];
+
+    // 2. Get all projects where this member has tasks assigned OR is a project member
+    const projectsQuery = `
             SELECT DISTINCT
                 p.project_id,
                 p."project-name" as project_name,
@@ -1534,178 +1580,178 @@ router.get('/statistics/member/:memberId', authenticate, async (req, res) => {
             )
             ORDER BY p.project_id DESC
         `;
-        
-        const projectsResult = await pool.query(projectsQuery, [memberId]);
-        
-        if (projectsResult.rows.length === 0) {
-            // Member has no projects or tasks
-            return res.json({
-                member: {
-                    id: member.id,
-                    email: member.email,
-                    role: member.role,
-                    name: member.email ? member.email.split('@')[0].replace(/\./g, ' ') : `Member ${member.id}`
-                },
-                summary: {
-                    totalProjects: 0,
-                    totalTasks: 0,
-                    completedTasks: 0,
-                    overallCompletionRate: 0,
-                    avgTasksPerDay: 0,
-                    productivity: 'Low'
-                },
-                projects: []
-            });
-        }
 
-        const projects = [];
+    const projectsResult = await pool.query(projectsQuery, [memberId]);
 
-        // 3. For each project, get the member's task statistics
-        for (const project of projectsResult.rows) {
-            const tasksResult = await pool.query(
-                `SELECT 
+    if (projectsResult.rows.length === 0) {
+      // Member has no projects or tasks
+      return res.json({
+        member: {
+          id: member.id,
+          email: member.email,
+          role: member.role,
+          name: member.email ? member.email.split('@')[0].replace(/\./g, ' ') : `Member ${member.id}`
+        },
+        summary: {
+          totalProjects: 0,
+          totalTasks: 0,
+          completedTasks: 0,
+          overallCompletionRate: 0,
+          avgTasksPerDay: 0,
+          productivity: 'Low'
+        },
+        projects: []
+      });
+    }
+
+    const projects = [];
+
+    // 3. For each project, get the member's task statistics
+    for (const project of projectsResult.rows) {
+      const tasksResult = await pool.query(
+        `SELECT 
                     COUNT(*) as total_tasks,
                     COUNT(*) FILTER (WHERE status = 'todo') as todo_tasks,
                     COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress_tasks,
                     COUNT(*) FILTER (WHERE status = 'done') as done_tasks
                  FROM tasks 
                  WHERE project_id = $1 AND assignee_id = $2`,
-                [project.project_id, memberId]
-            );
+        [project.project_id, memberId]
+      );
 
-            const tasks = tasksResult.rows[0];
-            const totalTasks = Number(tasks.total_tasks) || 0;
-            const doneTasks = Number(tasks.done_tasks) || 0;
-            const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+      const tasks = tasksResult.rows[0];
+      const totalTasks = Number(tasks.total_tasks) || 0;
+      const doneTasks = Number(tasks.done_tasks) || 0;
+      const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
-            // Calculate time-related metrics
-            let startDate, endDate;
-            try {
-                startDate = project.start_date ? new Date(project.start_date) : new Date();
-                endDate = project.end_date ? new Date(project.end_date) : new Date();
-            } catch (error) {
-                startDate = new Date();
-                endDate = new Date();
-            }
+      // Calculate time-related metrics
+      let startDate, endDate;
+      try {
+        startDate = project.start_date ? new Date(project.start_date) : new Date();
+        endDate = project.end_date ? new Date(project.end_date) : new Date();
+      } catch (error) {
+        startDate = new Date();
+        endDate = new Date();
+      }
 
-            const today = new Date();
-            const projectDuration = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
-            const daysElapsed = Math.min(Math.max(0, Math.ceil((today - startDate) / (1000 * 60 * 60 * 24))), projectDuration);
-            const daysRemaining = Math.max(0, projectDuration - daysElapsed);
-            const progressPercentage = projectDuration > 0 ? Math.round((daysElapsed / projectDuration) * 100) : 0;
+      const today = new Date();
+      const projectDuration = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
+      const daysElapsed = Math.min(Math.max(0, Math.ceil((today - startDate) / (1000 * 60 * 60 * 24))), projectDuration);
+      const daysRemaining = Math.max(0, projectDuration - daysElapsed);
+      const progressPercentage = projectDuration > 0 ? Math.round((daysElapsed / projectDuration) * 100) : 0;
 
-            // Only include projects where the member has tasks
-            if (totalTasks > 0) {
-                projects.push({
-                    projectId: project.project_id,
-                    projectName: project.project_name || 'Unnamed Project',
-                    totalTasks: totalTasks,
-                    todoTasks: Number(tasks.todo_tasks) || 0,
-                    inProgressTasks: Number(tasks.in_progress_tasks) || 0,
-                    doneTasks: doneTasks,
-                    completionRate: completionRate,
-                    projectDuration: projectDuration,
-                    daysElapsed: daysElapsed,
-                    daysRemaining: daysRemaining,
-                    progressPercentage: progressPercentage,
-                    assignedTasks: totalTasks,
-                    unassignedTasks: 0, // For member view, all shown tasks are assigned to them
-                    totalMembers: 0 // We can add this if needed
-                });
-            }
-        }
+      // Only include projects where the member has tasks
+      if (totalTasks > 0) {
+        projects.push({
+          projectId: project.project_id,
+          projectName: project.project_name || 'Unnamed Project',
+          totalTasks: totalTasks,
+          todoTasks: Number(tasks.todo_tasks) || 0,
+          inProgressTasks: Number(tasks.in_progress_tasks) || 0,
+          doneTasks: doneTasks,
+          completionRate: completionRate,
+          projectDuration: projectDuration,
+          daysElapsed: daysElapsed,
+          daysRemaining: daysRemaining,
+          progressPercentage: progressPercentage,
+          assignedTasks: totalTasks,
+          unassignedTasks: 0, // For member view, all shown tasks are assigned to them
+          totalMembers: 0 // We can add this if needed
+        });
+      }
+    }
 
-        // 4. Calculate overall statistics
-        const totalTasks = projects.reduce((sum, p) => sum + p.totalTasks, 0);
-        const completedTasks = projects.reduce((sum, p) => sum + p.doneTasks, 0);
-        const overallCompletionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-        
-        // Calculate avg tasks per day
-        // Get the earliest task creation date for this member
-        const earliestTaskResult = await pool.query(
-            `SELECT MIN(created_at) as earliest_date 
+    // 4. Calculate overall statistics
+    const totalTasks = projects.reduce((sum, p) => sum + p.totalTasks, 0);
+    const completedTasks = projects.reduce((sum, p) => sum + p.doneTasks, 0);
+    const overallCompletionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+    // Calculate avg tasks per day
+    // Get the earliest task creation date for this member
+    const earliestTaskResult = await pool.query(
+      `SELECT MIN(created_at) as earliest_date 
              FROM tasks 
              WHERE assignee_id = $1 AND created_at IS NOT NULL`,
-            [memberId]
-        );
+      [memberId]
+    );
 
-        let avgTasksPerDay = 0;
-        if (earliestTaskResult.rows[0]?.earliest_date) {
-            const earliestDate = new Date(earliestTaskResult.rows[0].earliest_date);
-            const today = new Date();
-            const daysSinceFirstTask = Math.max(1, Math.ceil((today - earliestDate) / (1000 * 60 * 60 * 24)));
-            avgTasksPerDay = totalTasks > 0 ? parseFloat((totalTasks / daysSinceFirstTask).toFixed(1)) : 0;
-        } else {
-            // Fallback: use 30 days if no task dates available
-            avgTasksPerDay = totalTasks > 0 ? parseFloat((totalTasks / 30).toFixed(1)) : 0;
-        }
-
-        const productivity = avgTasksPerDay > 3 ? 'High' : avgTasksPerDay > 1 ? 'Medium' : 'Low';
-
-        res.json({
-            member: {
-                id: member.id,
-                email: member.email,
-                role: member.role,
-                name: member.email ? member.email.split('@')[0].replace(/\./g, ' ') : `Member ${member.id}`
-            },
-            summary: {
-                totalProjects: projects.length,
-                totalTasks: totalTasks,
-                completedTasks: completedTasks,
-                overallCompletionRate: overallCompletionRate,
-                avgTasksPerDay: avgTasksPerDay,
-                productivity: productivity
-            },
-            projects: projects
-        });
-
-    } catch (error) {
-        console.error('Error fetching member statistics:', error);
-        res.status(500).json({ 
-            error: 'Failed to fetch member statistics',
-            details: error.message 
-        });
+    let avgTasksPerDay = 0;
+    if (earliestTaskResult.rows[0]?.earliest_date) {
+      const earliestDate = new Date(earliestTaskResult.rows[0].earliest_date);
+      const today = new Date();
+      const daysSinceFirstTask = Math.max(1, Math.ceil((today - earliestDate) / (1000 * 60 * 60 * 24)));
+      avgTasksPerDay = totalTasks > 0 ? parseFloat((totalTasks / daysSinceFirstTask).toFixed(1)) : 0;
+    } else {
+      // Fallback: use 30 days if no task dates available
+      avgTasksPerDay = totalTasks > 0 ? parseFloat((totalTasks / 30).toFixed(1)) : 0;
     }
+
+    const productivity = avgTasksPerDay > 3 ? 'High' : avgTasksPerDay > 1 ? 'Medium' : 'Low';
+
+    res.json({
+      member: {
+        id: member.id,
+        email: member.email,
+        role: member.role,
+        name: member.email ? member.email.split('@')[0].replace(/\./g, ' ') : `Member ${member.id}`
+      },
+      summary: {
+        totalProjects: projects.length,
+        totalTasks: totalTasks,
+        completedTasks: completedTasks,
+        overallCompletionRate: overallCompletionRate,
+        avgTasksPerDay: avgTasksPerDay,
+        productivity: productivity
+      },
+      projects: projects
+    });
+
+  } catch (error) {
+    console.error('Error fetching member statistics:', error);
+    res.status(500).json({
+      error: 'Failed to fetch member statistics',
+      details: error.message
+    });
+  }
 });
 
 // ==================== TIMELINE STATISTICS ENDPOINTS ====================
 
 // Get project timeline data (daily progress over time)
 router.get('/statistics/project/:projectId/timeline', authenticate, async (req, res) => {
-    const { projectId } = req.params;
-    const userId = req.user.userId;
-    const role = req.user.role;
+  const { projectId } = req.params;
+  const userId = req.user.userId;
+  const role = req.user.role;
 
-    try {
-        // Check if user has access to this project
-        const hasAccess = await hasProjectAccess(projectId, userId, role);
-        
-        if (!hasAccess) {
-            return res.status(403).json({ message: 'Access denied' });
-        }
+  try {
+    // Check if user has access to this project
+    const hasAccess = await hasProjectAccess(projectId, userId, role);
 
-        // Get project details
-        const projectResult = await pool.query(
-            `SELECT * FROM projects WHERE project_id = $1`,
-            [projectId]
-        );
-        
-        if (projectResult.rows.length === 0) {
-            return res.status(404).json({ message: 'Project not found' });
-        }
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
 
-        const project = projectResult.rows[0];
-        const startDate = project['start-date'] ? new Date(project['start-date']) : new Date();
-        const today = new Date();
+    // Get project details
+    const projectResult = await pool.query(
+      `SELECT * FROM projects WHERE project_id = $1`,
+      [projectId]
+    );
 
-        // Calculate days since project started
-        const daysSinceStart = Math.max(1, Math.ceil((today - startDate) / (1000 * 60 * 60 * 24)));
-        const daysToShow = Math.min(daysSinceStart, 30); // Show max 30 days
+    if (projectResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
 
-        // Get daily task statistics
-        const timelineResult = await pool.query(
-            `SELECT 
+    const project = projectResult.rows[0];
+    const startDate = project['start-date'] ? new Date(project['start-date']) : new Date();
+    const today = new Date();
+
+    // Calculate days since project started
+    const daysSinceStart = Math.max(1, Math.ceil((today - startDate) / (1000 * 60 * 60 * 24)));
+    const daysToShow = Math.min(daysSinceStart, 30); // Show max 30 days
+
+    // Get daily task statistics
+    const timelineResult = await pool.query(
+      `SELECT 
                 DATE(created_at) as date,
                 COUNT(*) as total_tasks,
                 COUNT(*) FILTER (WHERE status = 'done') as completed_tasks,
@@ -1717,115 +1763,115 @@ router.get('/statistics/project/:projectId/timeline', authenticate, async (req, 
                 AND created_at >= $2
              GROUP BY DATE(created_at)
              ORDER BY date`,
-            [projectId, new Date(today.getTime() - (daysToShow * 24 * 60 * 60 * 1000))]
-        );
+      [projectId, new Date(today.getTime() - (daysToShow * 24 * 60 * 60 * 1000))]
+    );
 
-        // Calculate cumulative progress
-        let cumulativeTasks = 0;
-        let cumulativeCompleted = 0;
-        
-        const timelineData = [];
-        for (let i = 0; i < daysToShow; i++) {
-            const date = new Date(today);
-            date.setDate(date.getDate() - (daysToShow - 1 - i));
-            const dateStr = date.toISOString().split('T')[0];
-            const formattedDate = date.toLocaleDateString('en-US', { 
-                month: 'short', 
-                day: 'numeric' 
-            });
+    // Calculate cumulative progress
+    let cumulativeTasks = 0;
+    let cumulativeCompleted = 0;
 
-            const dayData = timelineResult.rows.find(row => {
-                if (!row.date) return false;
-                const rowDate = new Date(row.date).toISOString().split('T')[0];
-                return rowDate === dateStr;
-            });
+    const timelineData = [];
+    for (let i = 0; i < daysToShow; i++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - (daysToShow - 1 - i));
+      const dateStr = date.toISOString().split('T')[0];
+      const formattedDate = date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
 
-            // Update cumulative counts
-            if (dayData) {
-                cumulativeTasks += Number(dayData.total_tasks) || 0;
-                cumulativeCompleted += Number(dayData.completed_tasks) || 0;
-            }
+      const dayData = timelineResult.rows.find(row => {
+        if (!row.date) return false;
+        const rowDate = new Date(row.date).toISOString().split('T')[0];
+        return rowDate === dateStr;
+      });
 
-            // Calculate daily metrics
-            const totalProjectTasks = await pool.query(
-                `SELECT COUNT(*) as total FROM tasks WHERE project_id = $1`,
-                [projectId]
-            );
-            const projectTotalTasks = Number(totalProjectTasks.rows[0]?.total) || 0;
+      // Update cumulative counts
+      if (dayData) {
+        cumulativeTasks += Number(dayData.total_tasks) || 0;
+        cumulativeCompleted += Number(dayData.completed_tasks) || 0;
+      }
 
-            const progress = projectTotalTasks > 0 
-                ? Math.round((cumulativeCompleted / projectTotalTasks) * 100) 
-                : 0;
+      // Calculate daily metrics
+      const totalProjectTasks = await pool.query(
+        `SELECT COUNT(*) as total FROM tasks WHERE project_id = $1`,
+        [projectId]
+      );
+      const projectTotalTasks = Number(totalProjectTasks.rows[0]?.total) || 0;
 
-            timelineData.push({
-                date: formattedDate,
-                fullDate: dateStr,
-                day: i + 1,
-                progress: Math.min(progress, 100),
-                tasksCompleted: cumulativeCompleted,
-                tasksCreated: cumulativeTasks,
-                dailyNewTasks: dayData ? Number(dayData.total_tasks) || 0 : 0,
-                dailyCompletedTasks: dayData ? Number(dayData.completed_tasks) || 0 : 0,
-                activeMembers: dayData ? Number(dayData.active_members) || 0 : 0,
-                todoTasks: dayData ? Number(dayData.todo_tasks) || 0 : 0,
-                inProgressTasks: dayData ? Number(dayData.in_progress_tasks) || 0 : 0
-            });
-        }
+      const progress = projectTotalTasks > 0
+        ? Math.round((cumulativeCompleted / projectTotalTasks) * 100)
+        : 0;
 
-        // Calculate timeline insights
-        const insights = {
-            currentProgress: timelineData[timelineData.length - 1]?.progress || 0,
-            averageDailyProgress: calculateAverageDailyProgress(timelineData),
-            peakProgressDay: findPeakProgressDay(timelineData),
-            progressTrend: calculateProgressTrend(timelineData),
-            productivityScore: calculateProductivityScore(timelineData),
-            consistencyScore: calculateConsistencyScore(timelineData)
-        };
-
-        res.json({
-            timelineData: timelineData,
-            insights: insights,
-            projectInfo: {
-                name: project['project-name'],
-                startDate: project['start-date'],
-                totalDays: daysToShow,
-                hasData: timelineData.length > 0
-            }
-        });
-
-    } catch (error) {
-        console.error('Error fetching project timeline:', error);
-        res.status(500).json({ 
-            error: 'Failed to fetch project timeline',
-            details: error.message 
-        });
+      timelineData.push({
+        date: formattedDate,
+        fullDate: dateStr,
+        day: i + 1,
+        progress: Math.min(progress, 100),
+        tasksCompleted: cumulativeCompleted,
+        tasksCreated: cumulativeTasks,
+        dailyNewTasks: dayData ? Number(dayData.total_tasks) || 0 : 0,
+        dailyCompletedTasks: dayData ? Number(dayData.completed_tasks) || 0 : 0,
+        activeMembers: dayData ? Number(dayData.active_members) || 0 : 0,
+        todoTasks: dayData ? Number(dayData.todo_tasks) || 0 : 0,
+        inProgressTasks: dayData ? Number(dayData.in_progress_tasks) || 0 : 0
+      });
     }
+
+    // Calculate timeline insights
+    const insights = {
+      currentProgress: timelineData[timelineData.length - 1]?.progress || 0,
+      averageDailyProgress: calculateAverageDailyProgress(timelineData),
+      peakProgressDay: findPeakProgressDay(timelineData),
+      progressTrend: calculateProgressTrend(timelineData),
+      productivityScore: calculateProductivityScore(timelineData),
+      consistencyScore: calculateConsistencyScore(timelineData)
+    };
+
+    res.json({
+      timelineData: timelineData,
+      insights: insights,
+      projectInfo: {
+        name: project['project-name'],
+        startDate: project['start-date'],
+        totalDays: daysToShow,
+        hasData: timelineData.length > 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching project timeline:', error);
+    res.status(500).json({
+      error: 'Failed to fetch project timeline',
+      details: error.message
+    });
+  }
 });
 
 // Get aggregated timeline data for all projects
 router.get('/statistics/timeline/aggregated', authenticate, async (req, res) => {
-    const userId = req.user.userId;
-    const role = req.user.role;
+  const userId = req.user.userId;
+  const role = req.user.role;
 
-    try {
-        let projectCondition = '';
-        let params = [];
+  try {
+    let projectCondition = '';
+    let params = [];
 
-        if (role !== 'ADMIN') {
-            projectCondition = `
+    if (role !== 'ADMIN') {
+      projectCondition = `
                 WHERE p.project_id IN (
                     SELECT project_id FROM project_members WHERE user_id = $1
                 )
             `;
-            params = [userId];
-        }
+      params = [userId];
+    }
 
-        // Get the last 30 days of aggregated data
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Get the last 30 days of aggregated data
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        const timelineResult = await pool.query(
-            `SELECT 
+    const timelineResult = await pool.query(
+      `SELECT 
                 DATE(t.created_at) as date,
                 COUNT(DISTINCT t.project_id) as active_projects,
                 COUNT(t.task_id) as total_tasks,
@@ -1837,126 +1883,126 @@ router.get('/statistics/timeline/aggregated', authenticate, async (req, res) => 
              WHERE t.created_at >= $${params.length + 1}
              GROUP BY DATE(t.created_at)
              ORDER BY date`,
-            [...params, thirtyDaysAgo]
-        );
+      [...params, thirtyDaysAgo]
+    );
 
-        // Process aggregated timeline data
-        const timelineData = [];
-        let cumulativeTasks = 0;
-        let cumulativeCompleted = 0;
-        
-        for (let i = 0; i < 30; i++) {
-            const date = new Date(thirtyDaysAgo);
-            date.setDate(date.getDate() + i);
-            const dateStr = date.toISOString().split('T')[0];
-            const formattedDate = date.toLocaleDateString('en-US', { 
-                month: 'short', 
-                day: 'numeric' 
-            });
+    // Process aggregated timeline data
+    const timelineData = [];
+    let cumulativeTasks = 0;
+    let cumulativeCompleted = 0;
 
-            const dayData = timelineResult.rows.find(row => {
-                if (!row.date) return false;
-                const rowDate = new Date(row.date).toISOString().split('T')[0];
-                return rowDate === dateStr;
-            });
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(thirtyDaysAgo);
+      date.setDate(date.getDate() + i);
+      const dateStr = date.toISOString().split('T')[0];
+      const formattedDate = date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
 
-            // Update cumulative counts
-            if (dayData) {
-                cumulativeTasks += Number(dayData.total_tasks) || 0;
-                cumulativeCompleted += Number(dayData.completed_tasks) || 0;
-            }
+      const dayData = timelineResult.rows.find(row => {
+        if (!row.date) return false;
+        const rowDate = new Date(row.date).toISOString().split('T')[0];
+        return rowDate === dateStr;
+      });
 
-            // Calculate overall progress
-            const totalTasksResult = await pool.query(
-                `SELECT COUNT(*) as total 
+      // Update cumulative counts
+      if (dayData) {
+        cumulativeTasks += Number(dayData.total_tasks) || 0;
+        cumulativeCompleted += Number(dayData.completed_tasks) || 0;
+      }
+
+      // Calculate overall progress
+      const totalTasksResult = await pool.query(
+        `SELECT COUNT(*) as total 
                  FROM tasks t
                  JOIN projects p ON t.project_id = p.project_id
                  ${projectCondition}`,
-                params
-            );
-            
-            const totalAllTasks = Number(totalTasksResult.rows[0]?.total) || 0;
-            const progress = totalAllTasks > 0 
-                ? Math.round((cumulativeCompleted / totalAllTasks) * 100) 
-                : 0;
+        params
+      );
 
-            timelineData.push({
-                date: formattedDate,
-                fullDate: dateStr,
-                day: i + 1,
-                totalProgress: Math.min(progress, 100),
-                completedTasks: cumulativeCompleted,
-                newTasks: cumulativeTasks,
-                dailyNewTasks: dayData ? Number(dayData.total_tasks) || 0 : 0,
-                dailyCompletedTasks: dayData ? Number(dayData.completed_tasks) || 0 : 0,
-                activeProjects: dayData ? Number(dayData.active_projects) || 0 : 0,
-                activeMembers: dayData ? Number(dayData.active_members) || 0 : 0,
-                productivity: dayData ? Math.round((Number(dayData.completed_tasks) / Math.max(1, Number(dayData.active_members))) * 100) : 0
-            });
-        }
+      const totalAllTasks = Number(totalTasksResult.rows[0]?.total) || 0;
+      const progress = totalAllTasks > 0
+        ? Math.round((cumulativeCompleted / totalAllTasks) * 100)
+        : 0;
 
-        // Calculate aggregated insights
-        const insights = {
-            overallProgress: timelineData[timelineData.length - 1]?.totalProgress || 0,
-            averageDailyProductivity: calculateAverageProductivity(timelineData),
-            mostProductiveDay: findMostProductiveDay(timelineData),
-            progressTrend: calculateAggregatedProgressTrend(timelineData),
-            averageActiveProjects: calculateAverageActiveProjects(timelineData),
-            teamEfficiency: calculateTeamEfficiency(timelineData)
-        };
-
-        res.json({
-            timelineData: timelineData,
-            insights: insights,
-            summary: {
-                totalDays: 30,
-                hasData: timelineData.length > 0,
-                dataPoints: timelineResult.rows.length
-            }
-        });
-
-    } catch (error) {
-        console.error('Error fetching aggregated timeline:', error);
-        res.status(500).json({ 
-            error: 'Failed to fetch aggregated timeline',
-            details: error.message 
-        });
+      timelineData.push({
+        date: formattedDate,
+        fullDate: dateStr,
+        day: i + 1,
+        totalProgress: Math.min(progress, 100),
+        completedTasks: cumulativeCompleted,
+        newTasks: cumulativeTasks,
+        dailyNewTasks: dayData ? Number(dayData.total_tasks) || 0 : 0,
+        dailyCompletedTasks: dayData ? Number(dayData.completed_tasks) || 0 : 0,
+        activeProjects: dayData ? Number(dayData.active_projects) || 0 : 0,
+        activeMembers: dayData ? Number(dayData.active_members) || 0 : 0,
+        productivity: dayData ? Math.round((Number(dayData.completed_tasks) / Math.max(1, Number(dayData.active_members))) * 100) : 0
+      });
     }
+
+    // Calculate aggregated insights
+    const insights = {
+      overallProgress: timelineData[timelineData.length - 1]?.totalProgress || 0,
+      averageDailyProductivity: calculateAverageProductivity(timelineData),
+      mostProductiveDay: findMostProductiveDay(timelineData),
+      progressTrend: calculateAggregatedProgressTrend(timelineData),
+      averageActiveProjects: calculateAverageActiveProjects(timelineData),
+      teamEfficiency: calculateTeamEfficiency(timelineData)
+    };
+
+    res.json({
+      timelineData: timelineData,
+      insights: insights,
+      summary: {
+        totalDays: 30,
+        hasData: timelineData.length > 0,
+        dataPoints: timelineResult.rows.length
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching aggregated timeline:', error);
+    res.status(500).json({
+      error: 'Failed to fetch aggregated timeline',
+      details: error.message
+    });
+  }
 });
 
 function calculateMemberProgressTrend(timelineData) {
-    if (timelineData.length < 7) return 0;
-    const lastWeek = timelineData.slice(-7);
-    const firstProgress = lastWeek[0].memberProgress || 0;
-    const lastProgress = lastWeek[lastWeek.length - 1].memberProgress || 0;
-    return parseFloat(((lastProgress - firstProgress) / Math.max(1, firstProgress) * 100).toFixed(1));
+  if (timelineData.length < 7) return 0;
+  const lastWeek = timelineData.slice(-7);
+  const firstProgress = lastWeek[0].memberProgress || 0;
+  const lastProgress = lastWeek[lastWeek.length - 1].memberProgress || 0;
+  return parseFloat(((lastProgress - firstProgress) / Math.max(1, firstProgress) * 100).toFixed(1));
 }
 
 function calculateConsistencyScore(progressValues) {
-    if (progressValues.length < 2) return 100;
-    const avg = progressValues.reduce((a, b) => a + b, 0) / progressValues.length;
-    const variance = progressValues.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / progressValues.length;
-    return Math.max(0, 100 - Math.sqrt(variance) * 3);
+  if (progressValues.length < 2) return 100;
+  const avg = progressValues.reduce((a, b) => a + b, 0) / progressValues.length;
+  const variance = progressValues.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / progressValues.length;
+  return Math.max(0, 100 - Math.sqrt(variance) * 3);
 }
 
 // Add this endpoint to your backend routes
 router.get('/statistics/member/:memberId/timeline', authenticate, async (req, res) => {
-    const { memberId } = req.params;
-    const userId = req.user.userId;
-    const role = req.user.role;
+  const { memberId } = req.params;
+  const userId = req.user.userId;
+  const role = req.user.role;
 
-    try {
-        // Verify access (only ADMIN or the member themselves)
-        if (role !== 'ADMIN' && userId.toString() !== memberId) {
-            return res.status(403).json({ message: 'Access denied' });
-        }
+  try {
+    // Verify access (only ADMIN or the member themselves)
+    if (role !== 'ADMIN' && userId.toString() !== memberId) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
 
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        // Get member's daily task statistics
-        const timelineResult = await pool.query(
-            `SELECT 
+    // Get member's daily task statistics
+    const timelineResult = await pool.query(
+      `SELECT 
                 DATE(t.created_at) as date,
                 COUNT(*) as total_tasks,
                 COUNT(*) FILTER (WHERE t.status = 'done') as completed_tasks,
@@ -1968,227 +2014,229 @@ router.get('/statistics/member/:memberId/timeline', authenticate, async (req, re
                 AND t.created_at >= $2
              GROUP BY DATE(t.created_at)
              ORDER BY date`,
-            [memberId, thirtyDaysAgo]
-        );
+      [memberId, thirtyDaysAgo]
+    );
 
-        // Get member's overall statistics
-        const memberStatsResult = await pool.query(
-            `SELECT 
+    // Get member's overall statistics
+    const memberStatsResult = await pool.query(
+      `SELECT 
                 COUNT(DISTINCT project_id) as total_projects,
                 COUNT(*) as total_tasks_assigned,
                 COUNT(*) FILTER (WHERE status = 'done') as total_tasks_completed
              FROM tasks 
              WHERE assignee_id = $1`,
-            [memberId]
-        );
+      [memberId]
+    );
 
-        const memberStats = memberStatsResult.rows[0] || {};
-        
-        // Calculate cumulative progress
-        let cumulativeTasks = 0;
-        let cumulativeCompleted = 0;
-        
-        const timelineData = [];
-        for (let i = 0; i < 30; i++) {
-            const date = new Date(thirtyDaysAgo);
-            date.setDate(date.getDate() + i);
-            const dateStr = date.toISOString().split('T')[0];
-            const formattedDate = date.toLocaleDateString('en-US', { 
-                month: 'short', 
-                day: 'numeric' 
-            });
+    const memberStats = memberStatsResult.rows[0] || {};
 
-            const dayData = timelineResult.rows.find(row => {
-                if (!row.date) return false;
-                const rowDate = new Date(row.date).toISOString().split('T')[0];
-                return rowDate === dateStr;
-            });
+    // Calculate cumulative progress
+    let cumulativeTasks = 0;
+    let cumulativeCompleted = 0;
 
-            // Update cumulative counts
-            if (dayData) {
-                cumulativeTasks += Number(dayData.total_tasks) || 0;
-                cumulativeCompleted += Number(dayData.completed_tasks) || 0;
-            }
+    const timelineData = [];
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(thirtyDaysAgo);
+      date.setDate(date.getDate() + i);
+      const dateStr = date.toISOString().split('T')[0];
+      const formattedDate = date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
 
-            // Calculate member-specific metrics
-            const totalAssigned = Number(memberStats.total_tasks_assigned) || 0;
-            const memberProgress = totalAssigned > 0 
-                ? Math.round((cumulativeCompleted / totalAssigned) * 100) 
-                : 0;
+      const dayData = timelineResult.rows.find(row => {
+        if (!row.date) return false;
+        const rowDate = new Date(row.date).toISOString().split('T')[0];
+        return rowDate === dateStr;
+      });
 
-            // Calculate productivity
-            const activeProjects = dayData ? Number(dayData.active_projects) || 0 : 0;
-            const dailyCompleted = dayData ? Number(dayData.completed_tasks) || 0 : 0;
-            const dailyProductivity = activeProjects > 0 && dailyCompleted > 0
-                ? Math.round((dailyCompleted / activeProjects) * 100)
-                : 0;
+      // Update cumulative counts
+      if (dayData) {
+        cumulativeTasks += Number(dayData.total_tasks) || 0;
+        cumulativeCompleted += Number(dayData.completed_tasks) || 0;
+      }
 
-            timelineData.push({
-                date: formattedDate,
-                fullDate: dateStr,
-                day: i + 1,
-                memberProgress: Math.min(memberProgress, 100),
-                memberTasksCompleted: cumulativeCompleted,
-                dailyCompletedTasks: dailyCompleted,
-                memberProductivity: Math.min(dailyProductivity, 100),
-                assignedTasks: totalAssigned,
-                activeProjects: activeProjects,
-                completionRate: Math.min(memberProgress, 100),
-                todoTasks: dayData ? Number(dayData.todo_tasks) || 0 : 0,
-                inProgressTasks: dayData ? Number(dayData.in_progress_tasks) || 0 : 0
-            });
-        }
+      // Calculate member-specific metrics
+      const totalAssigned = Number(memberStats.total_tasks_assigned) || 0;
+      const memberProgress = totalAssigned > 0
+        ? Math.round((cumulativeCompleted / totalAssigned) * 100)
+        : 0;
 
-        // Calculate member insights
-        const insights = {
-            memberProgress: timelineData[timelineData.length - 1]?.memberProgress || 0,
-            averageDailyProgress: calculateAverageDailyProgress(timelineData.map(d => d.memberProgress)),
-            mostProductiveDay: findMostProductiveDay(timelineData),
-            memberProductivity: calculateAverageProductivity(timelineData),
-            activeDays: timelineData.filter(d => d.dailyCompletedTasks > 0).length,
-            progressTrend: calculateMemberProgressTrend(timelineData),
-            consistencyScore: calculateConsistencyScore(timelineData.map(d => d.memberProgress)),
-            avgTasksPerDay: parseFloat((timelineData.reduce((sum, day) => sum + (day.dailyCompletedTasks || 0), 0) / timelineData.length).toFixed(1))
-        };
+      // Calculate productivity
+      const activeProjects = dayData ? Number(dayData.active_projects) || 0 : 0;
+      const dailyCompleted = dayData ? Number(dayData.completed_tasks) || 0 : 0;
+      const dailyProductivity = activeProjects > 0 && dailyCompleted > 0
+        ? Math.round((dailyCompleted / activeProjects) * 100)
+        : 0;
 
-        res.json({
-            timelineData: timelineData,
-            insights: insights,
-            memberInfo: {
-                totalProjects: memberStats.total_projects || 0,
-                totalTasksAssigned: memberStats.total_tasks_assigned || 0,
-                totalTasksCompleted: memberStats.total_tasks_completed || 0
-            }
-        });
-
-    } catch (error) {
-        console.error('Error fetching member timeline:', error);
-        res.status(500).json({ 
-            error: 'Failed to fetch member timeline',
-            details: error.message 
-        });
+      timelineData.push({
+        date: formattedDate,
+        fullDate: dateStr,
+        day: i + 1,
+        memberProgress: Math.min(memberProgress, 100),
+        memberTasksCompleted: cumulativeCompleted,
+        dailyCompletedTasks: dailyCompleted,
+        memberProductivity: Math.min(dailyProductivity, 100),
+        assignedTasks: totalAssigned,
+        activeProjects: activeProjects,
+        completionRate: Math.min(memberProgress, 100),
+        todoTasks: dayData ? Number(dayData.todo_tasks) || 0 : 0,
+        inProgressTasks: dayData ? Number(dayData.in_progress_tasks) || 0 : 0
+      });
     }
+
+    // Calculate member insights
+    const insights = {
+      memberProgress: timelineData[timelineData.length - 1]?.memberProgress || 0,
+      averageDailyProgress: calculateAverageDailyProgress(timelineData.map(d => d.memberProgress)),
+      mostProductiveDay: findMostProductiveDay(timelineData),
+      memberProductivity: calculateAverageProductivity(timelineData),
+      activeDays: timelineData.filter(d => d.dailyCompletedTasks > 0).length,
+      progressTrend: calculateMemberProgressTrend(timelineData),
+      consistencyScore: calculateConsistencyScore(timelineData.map(d => d.memberProgress)),
+      avgTasksPerDay: parseFloat((timelineData.reduce((sum, day) => sum + (day.dailyCompletedTasks || 0), 0) / timelineData.length).toFixed(1))
+    };
+
+    res.json({
+      timelineData: timelineData,
+      insights: insights,
+      memberInfo: {
+        totalProjects: memberStats.total_projects || 0,
+        totalTasksAssigned: memberStats.total_tasks_assigned || 0,
+        totalTasksCompleted: memberStats.total_tasks_completed || 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching member timeline:', error);
+    res.status(500).json({
+      error: 'Failed to fetch member timeline',
+      details: error.message
+    });
+  }
 });
+
+
 
 
 // Helper functions for timeline calculations
 function calculateAverageDailyProgress(progressValues) {
-    if (progressValues.length < 2) return 0;
-    const differences = [];
-    for (let i = 1; i < progressValues.length; i++) {
-        differences.push(progressValues[i] - progressValues[i - 1]);
-    }
-    const avg = differences.reduce((a, b) => a + b, 0) / differences.length;
-    return parseFloat(avg.toFixed(1));
+  if (progressValues.length < 2) return 0;
+  const differences = [];
+  for (let i = 1; i < progressValues.length; i++) {
+    differences.push(progressValues[i] - progressValues[i - 1]);
+  }
+  const avg = differences.reduce((a, b) => a + b, 0) / differences.length;
+  return parseFloat(avg.toFixed(1));
 }
 
 
 function findPeakProgressDay(timelineData) {
-    if (timelineData.length === 0) return null;
-    
-    let maxProgress = 0;
-    let peakDay = null;
-    
-    timelineData.forEach(day => {
-        const dailyChange = day.progress - (timelineData.find(d => d.day === day.day - 1)?.progress || 0);
-        if (dailyChange > maxProgress) {
-            maxProgress = dailyChange;
-            peakDay = day;
-        }
-    });
-    
-    return peakDay ? { date: peakDay.date, progressIncrease: maxProgress } : null;
+  if (timelineData.length === 0) return null;
+
+  let maxProgress = 0;
+  let peakDay = null;
+
+  timelineData.forEach(day => {
+    const dailyChange = day.progress - (timelineData.find(d => d.day === day.day - 1)?.progress || 0);
+    if (dailyChange > maxProgress) {
+      maxProgress = dailyChange;
+      peakDay = day;
+    }
+  });
+
+  return peakDay ? { date: peakDay.date, progressIncrease: maxProgress } : null;
 }
 
 function calculateProgressTrend(timelineData) {
-    if (timelineData.length < 7) return 0;
-    
-    const lastWeek = timelineData.slice(-7);
-    const firstProgress = lastWeek[0].progress || 0;
-    const lastProgress = lastWeek[lastWeek.length - 1].progress || 0;
-    
-    return parseFloat(((lastProgress - firstProgress) / Math.max(1, firstProgress) * 100).toFixed(1));
+  if (timelineData.length < 7) return 0;
+
+  const lastWeek = timelineData.slice(-7);
+  const firstProgress = lastWeek[0].progress || 0;
+  const lastProgress = lastWeek[lastWeek.length - 1].progress || 0;
+
+  return parseFloat(((lastProgress - firstProgress) / Math.max(1, firstProgress) * 100).toFixed(1));
 }
 
 function calculateProductivityScore(timelineData) {
-    if (timelineData.length === 0) return 0;
-    
-    const completedTasks = timelineData.reduce((sum, day) => sum + (day.dailyCompletedTasks || 0), 0);
-    const totalDays = timelineData.length;
-    
-    return Math.round((completedTasks / totalDays) * 10) / 10; // Score out of 10
+  if (timelineData.length === 0) return 0;
+
+  const completedTasks = timelineData.reduce((sum, day) => sum + (day.dailyCompletedTasks || 0), 0);
+  const totalDays = timelineData.length;
+
+  return Math.round((completedTasks / totalDays) * 10) / 10; // Score out of 10
 }
 
 function calculateConsistencyScore(timelineData) {
-    if (timelineData.length < 2) return 100;
-    
-    const progressChanges = [];
-    for (let i = 1; i < timelineData.length; i++) {
-        progressChanges.push(timelineData[i].progress - timelineData[i-1].progress);
-    }
-    
-    const avgChange = progressChanges.reduce((a, b) => a + b, 0) / progressChanges.length;
-    const variance = progressChanges.reduce((sum, change) => sum + Math.pow(change - avgChange, 2), 0) / progressChanges.length;
-    
-    // Convert to score (0-100), lower variance = higher consistency
-    const maxVariance = 10; // Assuming max variance of 10% daily change
-    const consistency = Math.max(0, 100 - (variance / maxVariance * 100));
-    
-    return Math.round(consistency);
+  if (timelineData.length < 2) return 100;
+
+  const progressChanges = [];
+  for (let i = 1; i < timelineData.length; i++) {
+    progressChanges.push(timelineData[i].progress - timelineData[i - 1].progress);
+  }
+
+  const avgChange = progressChanges.reduce((a, b) => a + b, 0) / progressChanges.length;
+  const variance = progressChanges.reduce((sum, change) => sum + Math.pow(change - avgChange, 2), 0) / progressChanges.length;
+
+  // Convert to score (0-100), lower variance = higher consistency
+  const maxVariance = 10; // Assuming max variance of 10% daily change
+  const consistency = Math.max(0, 100 - (variance / maxVariance * 100));
+
+  return Math.round(consistency);
 }
 
 function calculateAverageProductivity(timelineData) {
-    if (!timelineData.length) return 0;
-    const sum = timelineData.reduce((acc, day) => acc + (day.memberProductivity || 0), 0);
-    return parseFloat((sum / timelineData.length).toFixed(1));
+  if (!timelineData.length) return 0;
+  const sum = timelineData.reduce((acc, day) => acc + (day.memberProductivity || 0), 0);
+  return parseFloat((sum / timelineData.length).toFixed(1));
 }
 
 function findMostProductiveDay(timelineData) {
-    if (!timelineData.length) return null;
-    let maxTasks = 0;
-    let productiveDay = null;
-    
-    timelineData.forEach(day => {
-        if (day.dailyCompletedTasks > maxTasks) {
-            maxTasks = day.dailyCompletedTasks;
-            productiveDay = day;
-        }
-    });
-    
-    return productiveDay ? { 
-        date: productiveDay.date, 
-        tasks: productiveDay.dailyCompletedTasks,
-        productivity: productiveDay.memberProductivity 
-    } : null;
+  if (!timelineData.length) return null;
+  let maxTasks = 0;
+  let productiveDay = null;
+
+  timelineData.forEach(day => {
+    if (day.dailyCompletedTasks > maxTasks) {
+      maxTasks = day.dailyCompletedTasks;
+      productiveDay = day;
+    }
+  });
+
+  return productiveDay ? {
+    date: productiveDay.date,
+    tasks: productiveDay.dailyCompletedTasks,
+    productivity: productiveDay.memberProductivity
+  } : null;
 }
 
 
 function calculateAggregatedProgressTrend(timelineData) {
-    if (timelineData.length < 7) return 0;
-    
-    const lastWeek = timelineData.slice(-7);
-    const firstProgress = lastWeek[0].totalProgress || 0;
-    const lastProgress = lastWeek[lastWeek.length - 1].totalProgress || 0;
-    
-    return parseFloat(((lastProgress - firstProgress) / Math.max(1, firstProgress) * 100).toFixed(1));
+  if (timelineData.length < 7) return 0;
+
+  const lastWeek = timelineData.slice(-7);
+  const firstProgress = lastWeek[0].totalProgress || 0;
+  const lastProgress = lastWeek[lastWeek.length - 1].totalProgress || 0;
+
+  return parseFloat(((lastProgress - firstProgress) / Math.max(1, firstProgress) * 100).toFixed(1));
 }
 
 function calculateAverageActiveProjects(timelineData) {
-    if (timelineData.length === 0) return 0;
-    
-    const total = timelineData.reduce((sum, day) => sum + (day.activeProjects || 0), 0);
-    return parseFloat((total / timelineData.length).toFixed(1));
+  if (timelineData.length === 0) return 0;
+
+  const total = timelineData.reduce((sum, day) => sum + (day.activeProjects || 0), 0);
+  return parseFloat((total / timelineData.length).toFixed(1));
 }
 
 function calculateTeamEfficiency(timelineData) {
-    if (timelineData.length === 0) return 0;
-    
-    const totalCompleted = timelineData.reduce((sum, day) => sum + (day.dailyCompletedTasks || 0), 0);
-    const totalActiveMembers = timelineData.reduce((sum, day) => sum + (day.activeMembers || 0), 0);
-    
-    if (totalActiveMembers === 0) return 0;
-    
-    return parseFloat((totalCompleted / totalActiveMembers).toFixed(1));
+  if (timelineData.length === 0) return 0;
+
+  const totalCompleted = timelineData.reduce((sum, day) => sum + (day.dailyCompletedTasks || 0), 0);
+  const totalActiveMembers = timelineData.reduce((sum, day) => sum + (day.activeMembers || 0), 0);
+
+  if (totalActiveMembers === 0) return 0;
+
+  return parseFloat((totalCompleted / totalActiveMembers).toFixed(1));
 }
 
 
