@@ -347,12 +347,12 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
       start_date,
       end_date,
       comment,
-      members = [] // array of user IDs
+      members = []
     } = req.body;
 
     await client.query('BEGIN');
 
-    // 1️⃣ Update project main info
+    // 1️⃣ Update project
     await client.query(
       `
       UPDATE projects
@@ -366,7 +366,7 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
       [project_name, start_date, end_date, comment, projectId]
     );
 
-    // 2️⃣ Remove members that are no longer selected
+    // 2️⃣ Remove unselected members
     await client.query(
       `
       DELETE FROM project_members
@@ -375,10 +375,10 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
         SELECT UNNEST($2::int[])
       )
       `,
-      [projectId, members.length ? members : [0]] // prevent empty array SQL error
+      [projectId, members.length ? members : [0]]
     );
 
-    // 3️⃣ Add new members (ignore existing)
+    // 3️⃣ Add new members
     for (const memberId of members) {
       await client.query(
         `
@@ -392,9 +392,37 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
 
     await client.query('COMMIT');
 
-    res.json({
-      message: 'Project updated successfully'
-    });
+    // 4️⃣ Fetch emails of project members
+    const { rows: users } = await pool.query(
+      `
+      SELECT email
+      FROM "User"
+      WHERE id = ANY($1::int[])
+      `,
+      [members]
+    );
+
+    // 5️⃣ Send emails
+    const emailPromises = users.map(user =>
+      transporter.sendMail({
+        from: '"IA TEAM" <administration.STS@avocarbon.com>',
+        to: user.email,
+        subject: 'Project Updated',
+        html: `
+          <p>Hello,</p>
+          <p>The project <strong>${project_name}</strong> has been updated.</p>
+          <p><strong>Start Date:</strong> ${start_date}</p>
+          <p><strong>End Date:</strong> ${end_date}</p>
+          <p><strong>Comment:</strong> ${comment || 'N/A'}</p>
+          <br/>
+          <p>Best regards,<br/>AVO Carbon Team</p>
+        `
+      })
+    );
+
+    await Promise.all(emailPromises);
+
+    res.json({ message: 'Project updated and emails sent successfully' });
 
   } catch (error) {
     await client.query('ROLLBACK');
