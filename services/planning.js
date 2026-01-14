@@ -415,7 +415,7 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
           <p><strong>End Date:</strong> ${end_date}</p>
           <p><strong>Comment:</strong> ${comment || 'N/A'}</p>
           <br/>
-          <p>Best regards,<br/>AVO Carbon Team</p>
+          <p>Best regards,<br/>AI AND SOFTWARE TEAM</p>
         `
       })
     );
