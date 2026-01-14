@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
 
+// ... your existing middleware and configurations ...
 
 JWT_SECRET = '12345';
 JWT_REFRESH_SECRET = '123456';
@@ -332,6 +333,75 @@ router.get('/api/my-projects', authenticate, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch projects' });
+  }
+});
+
+// update project
+router.put('/projects/:projectId', authenticate, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { projectId } = req.params;
+    const {
+      project_name,
+      start_date,
+      end_date,
+      comment,
+      members = [] // array of user IDs
+    } = req.body;
+
+    await client.query('BEGIN');
+
+    // 1️⃣ Update project main info
+    await client.query(
+      `
+      UPDATE projects
+      SET
+        "project-name" = $1,
+        "start-date" = $2,
+        "end-date" = $3,
+        comment = $4
+      WHERE project_id = $5
+      `,
+      [project_name, start_date, end_date, comment, projectId]
+    );
+
+    // 2️⃣ Remove members that are no longer selected
+    await client.query(
+      `
+      DELETE FROM project_members
+      WHERE project_id = $1
+      AND user_id NOT IN (
+        SELECT UNNEST($2::int[])
+      )
+      `,
+      [projectId, members.length ? members : [0]] // prevent empty array SQL error
+    );
+
+    // 3️⃣ Add new members (ignore existing)
+    for (const memberId of members) {
+      await client.query(
+        `
+        INSERT INTO project_members (project_id, user_id, role)
+        VALUES ($1, $2, 'member')
+        ON CONFLICT (project_id, user_id) DO NOTHING
+        `,
+        [projectId, memberId]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    res.json({
+      message: 'Project updated successfully'
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Update project error:', error);
+    res.status(500).json({ error: 'Failed to update project' });
+  } finally {
+    client.release();
   }
 });
 
