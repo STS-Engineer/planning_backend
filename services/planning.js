@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
 
-// ... your existing middleware and configurations ...
+
 
 JWT_SECRET = '12345';
 JWT_REFRESH_SECRET = '123456';
@@ -50,17 +50,389 @@ const sendAssignmentEmail = async (to, name, projectName, startDate, endDate) =>
       from: '"STS Project Management" <administration.STS@avocarbon.com>',
       to, // recipient email
       subject: `You have been assigned to a new project: ${projectName}`,
-      html: `
-         <p>Dear ${name},</p>
-        <p>You have been assigned to a new project:</p>
-        <ul>
-          <li><strong>Project Name:</strong> ${projectName}</li>
-          <li><strong>Start Date:</strong> ${startDate}</li>
-          <li><strong>End Date:</strong> ${endDate}</li>
-        </ul>
-        <p>Please check your <a href="https://sts-project-management.azurewebsites.net/dashboard" target="_blank">dashboard</a> for more details.</p>
-        <p>Regards,<br/>STS Project Management Team</p>
-      `,
+        html: `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Project Assignment</title>
+    <style>
+        /* Simple Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f7fa;
+            padding: 20px;
+        }
+        
+        /* Main Container */
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        }
+        
+        /* Header */
+        .header {
+            background: #4f46e5;
+            color: white;
+            padding: 32px 40px;
+            text-align: center;
+        }
+        
+        .header-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            display: block;
+        }
+        
+        .header-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .header-subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        /* Content */
+        .content {
+            padding: 40px;
+        }
+        
+        .greeting {
+            font-size: 16px;
+            color: #4b5563;
+            margin-bottom: 24px;
+        }
+        
+        .greeting strong {
+            color: #111827;
+        }
+        
+        /* Project Card */
+        .project-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 32px;
+            margin: 32px 0;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            background: #f0f9ff;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #4f46e5;
+        }
+        
+        .card-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #111827;
+        }
+        
+        .card-subtitle {
+            font-size: 14px;
+            color: #6b7280;
+        }
+        
+        /* Details List */
+        .details-list {
+            display: grid;
+            gap: 16px;
+        }
+        
+        .detail-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+        }
+        
+        .detail-icon {
+            width: 32px;
+            height: 32px;
+            background: #f8fafc;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #4f46e5;
+            flex-shrink: 0;
+        }
+        
+        .detail-content {
+            flex: 1;
+        }
+        
+        .detail-label {
+            font-size: 13px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+        
+        .detail-value {
+            font-size: 16px;
+            color: #111827;
+            font-weight: 500;
+        }
+        
+        /* Timeline */
+        .timeline {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 32px 0;
+            padding: 24px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+        
+        .timeline-item {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .timeline-label {
+            font-size: 12px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .timeline-date {
+            font-size: 16px;
+            color: #111827;
+            font-weight: 600;
+        }
+        
+        .timeline-separator {
+            color: #d1d5db;
+            font-size: 20px;
+            padding: 0 16px;
+        }
+        
+        /* CTA Button */
+        .cta-section {
+            text-align: center;
+            margin: 40px 0 32px;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            background: #4f46e5;
+            color: white;
+            text-decoration: none;
+            padding: 16px 32px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+        
+        .cta-button:hover {
+            background: #4338ca;
+        }
+        
+        .cta-note {
+            font-size: 14px;
+            color: #6b7280;
+            margin-top: 12px;
+        }
+        
+        /* Footer */
+        .footer {
+            border-top: 1px solid #e5e7eb;
+            padding: 32px 40px;
+            text-align: center;
+            background: #f9fafb;
+        }
+        
+        .footer-logo {
+            font-size: 18px;
+            font-weight: 700;
+            color: #4f46e5;
+            margin-bottom: 8px;
+        }
+        
+        .footer-info {
+            font-size: 13px;
+            color: #6b7280;
+            line-height: 1.5;
+        }
+        
+        /* Responsive */
+        @media (max-width: 640px) {
+            .header,
+            .content {
+                padding: 24px;
+            }
+            
+            .project-card {
+                padding: 24px;
+            }
+            
+            .timeline {
+                flex-direction: column;
+                gap: 16px;
+            }
+            
+            .timeline-separator {
+                transform: rotate(90deg);
+                padding: 8px 0;
+            }
+            
+            .footer {
+                padding: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <span class="header-icon">🎯</span>
+            <h1 class="header-title">New Project Assignment</h1>
+            <p class="header-subtitle">STS Project Management System</p>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+            <p class="greeting">
+                Dear <strong>${name}</strong>,
+            </p>
+            
+            <p style="color: #4b5563; margin-bottom: 24px;">
+                You have been assigned to a new project. Here are the details:
+            </p>
+            
+            <!-- Project Card -->
+            <div class="project-card">
+                <div class="card-header">
+                    <div class="card-icon">📋</div>
+                    <div>
+                        <h2 class="card-title">${projectName}</h2>
+                        <p class="card-subtitle">New Project Assignment</p>
+                    </div>
+                </div>
+                
+                <!-- Details List -->
+                <div class="details-list">
+                    <div class="detail-item">
+                        <div class="detail-icon">🏷️</div>
+                        <div class="detail-content">
+                            <div class="detail-label">Project Name</div>
+                            <div class="detail-value">${projectName}</div>
+                        </div>
+                    </div>
+                    
+                    ${startDate ? `
+                    <div class="detail-item">
+                        <div class="detail-icon">📅</div>
+                        <div class="detail-content">
+                            <div class="detail-label">Start Date</div>
+                            <div class="detail-value">${startDate}</div>
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${endDate ? `
+                    <div class="detail-item">
+                        <div class="detail-icon">🎯</div>
+                        <div class="detail-content">
+                            <div class="detail-label">End Date</div>
+                            <div class="detail-value">${endDate}</div>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                <!-- Timeline -->
+                ${startDate && endDate ? `
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <div class="timeline-label">Starts</div>
+                        <div class="timeline-date">${startDate}</div>
+                    </div>
+                    <div class="timeline-separator">→</div>
+                    <div class="timeline-item">
+                        <div class="timeline-label">Ends</div>
+                        <div class="timeline-date">${endDate}</div>
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+            
+            <!-- Call to Action -->
+            <div class="cta-section">
+                <a href="https://sts-project-management.azurewebsites.net/dashboard" class="cta-button" target="_blank">
+                    View Project Details
+                </a>
+                <p class="cta-note">
+                    Access your dashboard for complete project information
+                </p>
+            </div>
+            
+            <div style="color: #4b5563; font-size: 15px; line-height: 1.6;">
+                <p style="margin-bottom: 8px;">
+                    <strong>📌 What to do next:</strong>
+                </p>
+                <ul style="padding-left: 20px; color: #6b7280;">
+                    <li style="margin-bottom: 4px;">Review the project details in your dashboard</li>
+                    <li style="margin-bottom: 4px;">Check your assigned tasks and deadlines</li>
+                    <li>Contact your project lead for any questions</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-logo">STS Project Management</div>
+            <div class="footer-info">
+                <p>This is an automated notification. Please do not reply to this email.</p>
+                <p style="margin-top: 8px;">
+                    For assistance, contact your project lead or system administrator.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+`
     });
   } catch (err) {
     console.error('Failed to send email:', err);
@@ -410,20 +782,469 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
         cc: 'taha.khiari@avocarbon.com',  // Add Taha to CC
         subject: `Project Updated: ${project_name}`,
         html: `
-          <p>Hello ${getNameFromEmail(user.email)},</p>
-          <p>The project <strong>${project_name}</strong> has been updated.</p>
-          <p><strong>Project Details:</strong></p>
-          <ul>
-            <li><strong>Project Name:</strong> ${project_name}</li>
-            <li><strong>Start Date:</strong> ${start_date}</li>
-            <li><strong>End Date:</strong> ${end_date}</li>
-            <li><strong>Comment:</strong> ${comment || 'N/A'}</li>
-          </ul>
-          <p>Please log in to your dashboard to view the complete project details.</p>
-          <br/>
-          <p>Best regards,<br/>AVO Carbon Team</p>
-          <p><small>This email was automatically generated by STS Project Management System.</small></p>
-        `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Project Update - AVO Carbon</title>
+        <style>
+          /* Modern CSS Reset */
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+          }
+
+          .email-container {
+            max-width: 600px;
+            margin: 40px auto;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            position: relative;
+          }
+
+          /* Decorative elements */
+          .email-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: linear-gradient(90deg, #667eea, #764ba2, #f093fb);
+          }
+
+          /* Header */
+          .email-header {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 40px 30px;
+            text-align: center;
+            border-bottom: 1px solid #e0e0e0;
+          }
+
+          .logo-container {
+            margin-bottom: 20px;
+          }
+
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: inline-block;
+          }
+
+          .header-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #2d3748, #4a5568);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+          }
+
+          .header-subtitle {
+            color: #718096;
+            font-size: 16px;
+            font-weight: 500;
+          }
+
+          /* Badge */
+          .update-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-top: 15px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+          }
+
+          /* Content */
+          .email-content {
+            padding: 40px 30px;
+          }
+
+          .greeting {
+            font-size: 18px;
+            color: #2d3748;
+            margin-bottom: 30px;
+            font-weight: 500;
+          }
+
+          .greeting strong {
+            color: #667eea;
+            font-weight: 700;
+          }
+
+          /* Project Card */
+          .project-card {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 20px;
+            padding: 30px;
+            margin: 30px 0;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            position: relative;
+            overflow: hidden;
+          }
+
+          .project-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 8px;
+            height: 100%;
+            background: linear-gradient(180deg, #667eea, #764ba2);
+          }
+
+          .project-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 20px;
+            padding-left: 15px;
+            position: relative;
+          }
+
+          .project-title::before {
+            content: '📋';
+            position: absolute;
+            left: -10px;
+          }
+
+          /* Details Grid */
+          .details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 25px;
+          }
+
+          .detail-item {
+            background: white;
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid #edf2f7;
+            transition: all 0.3s ease;
+          }
+
+          .detail-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.08);
+            border-color: #cbd5e0;
+          }
+
+          .detail-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #718096;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+
+          .detail-label::before {
+            content: '';
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+          }
+
+          .detail-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2d3748;
+            line-height: 1.4;
+          }
+
+          /* Action Button */
+          .action-section {
+            text-align: center;
+            margin: 40px 0 30px;
+          }
+
+          .action-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            padding: 18px 40px;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 16px;
+            letter-spacing: 0.5px;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+            position: relative;
+            overflow: hidden;
+          }
+
+          .action-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
+          }
+
+          .action-button::after {
+            content: '→';
+            margin-left: 10px;
+            transition: transform 0.3s ease;
+          }
+
+          .action-button:hover::after {
+            transform: translateX(5px);
+          }
+
+          /* Timeline */
+          .timeline {
+            margin: 30px 0;
+            position: relative;
+          }
+
+          .timeline::before {
+            content: '';
+            position: absolute;
+            left: 20px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, #667eea, #764ba2);
+          }
+
+          .timeline-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            position: relative;
+          }
+
+          .timeline-dot {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            margin-right: 20px;
+            flex-shrink: 0;
+            z-index: 1;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+          }
+
+          .timeline-content {
+            flex: 1;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+          }
+
+          /* Footer */
+          .email-footer {
+            background: #1a202c;
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+            border-top: 1px solid #2d3748;
+          }
+
+          .footer-logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 20px;
+          }
+
+          .footer-links {
+            margin: 25px 0;
+          }
+
+          .footer-link {
+            color: #cbd5e0;
+            text-decoration: none;
+            margin: 0 15px;
+            font-size: 14px;
+            transition: color 0.3s ease;
+          }
+
+          .footer-link:hover {
+            color: #667eea;
+          }
+
+          .copyright {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 25px;
+            line-height: 1.6;
+          }
+
+          /* Responsive */
+          @media (max-width: 600px) {
+            .email-container {
+              margin: 20px auto;
+              border-radius: 16px;
+            }
+
+            .email-header,
+            .email-content {
+              padding: 30px 20px;
+            }
+
+            .header-title {
+              font-size: 24px;
+            }
+
+            .project-card {
+              padding: 20px;
+            }
+
+            .details-grid {
+              grid-template-columns: 1fr;
+            }
+
+            .action-button {
+              padding: 16px 32px;
+              width: 100%;
+              text-align: center;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="email-container">
+          <!-- Header -->
+          <div class="email-header">
+            <div class="logo-container">
+              <div class="logo">AVO CARBON</div>
+            </div>
+            <h1 class="header-title">Project Update Notification</h1>
+            <p class="header-subtitle">STS Project Management System</p>
+      
+          </div>
+
+          <!-- Content -->
+          <div class="email-content">
+            <p class="greeting">
+              Hello <strong>${getNameFromEmail(user.email)}</strong>,
+            </p>
+            
+            <p style="color: #4a5568; margin-bottom: 30px; font-size: 16px;">
+              We wanted to inform you that there have been updates to a project you're associated with.
+            </p>
+
+            <!-- Project Card -->
+            <div class="project-card">
+              <h2 class="project-title">${project_name}</h2>
+              
+              <!-- Timeline -->
+              <div class="timeline">
+                ${start_date ? `
+                <div class="timeline-item">
+                  <div class="timeline-dot">📅</div>
+                  <div class="timeline-content">
+                    <strong>Start Date:</strong> ${start_date}
+                  </div>
+                </div>
+                ` : ''}
+                
+                ${end_date ? `
+                <div class="timeline-item">
+                  <div class="timeline-dot">🎯</div>
+                  <div class="timeline-content">
+                    <strong>End Date:</strong> ${end_date}
+                  </div>
+                </div>
+                ` : ''}
+              </div>
+
+              <!-- Details Grid -->
+              <div class="details-grid">
+                <div class="detail-item">
+                  <div class="detail-label">Project Name</div>
+                  <div class="detail-value">${project_name}</div>
+                </div>
+
+                ${start_date ? `
+                <div class="detail-item">
+                  <div class="detail-label">Start Date</div>
+                  <div class="detail-value">${start_date}</div>
+                </div>
+                ` : ''}
+
+                ${end_date ? `
+                <div class="detail-item">
+                  <div class="detail-label">End Date</div>
+                  <div class="detail-value">${end_date}</div>
+                </div>
+                ` : ''}
+
+                <div class="detail-item">
+                  <div class="detail-label">Notes</div>
+                  <div class="detail-value">${comment || 'No additional notes'}</div>
+                </div>
+              </div>
+            </div>
+
+       
+
+            <p style="color: #4a5568; font-size: 15px; line-height: 1.6;">
+              The project details have been updated in the STS Project Management System. 
+              You can review the changes and collaborate with your team members.
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div class="email-footer">
+            <div class="footer-logo">AVO CARBON</div>
+            <p style="color: #cbd5e0; margin-bottom: 20px;">
+              Sustainable Technology Solutions
+            </p>
+            
+            <div class="footer-links">
+              <a href="#" class="footer-link">Dashboard</a>
+              <a href="#" class="footer-link">Projects</a>
+              <a href="#" class="footer-link">Support</a>
+              <a href="#" class="footer-link">Contact</a>
+            </div>
+            
+            <div class="copyright">
+              <p>© ${new Date().getFullYear()} AVO Carbon. All rights reserved.</p>
+              <p>This email was automatically generated by STS Project Management System.</p>
+              <p style="margin-top: 15px; color: #4a5568;">
+                Need help? Contact us at <a href="mailto:support@avocarbon.com" style="color: #667eea;">support@avocarbon.com</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
       })
     );
 
