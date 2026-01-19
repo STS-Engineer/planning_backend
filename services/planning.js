@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
 
-
+// ... your existing middleware and configurations ...
 
 JWT_SECRET = '12345';
 JWT_REFRESH_SECRET = '123456';
@@ -50,7 +50,7 @@ const sendAssignmentEmail = async (to, name, projectName, startDate, endDate) =>
       from: '"STS Project Management" <administration.STS@avocarbon.com>',
       to, // recipient email
       subject: `You have been assigned to a new project: ${projectName}`,
-        html: `
+      html: `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -438,6 +438,72 @@ const sendAssignmentEmail = async (to, name, projectName, startDate, endDate) =>
     console.error('Failed to send email:', err);
   }
 };
+// ==================== Notifications ENDPOINTS ====================
+// Helper function to create notifications
+const createNotification = async (userId, title, message, type, referenceType = null, referenceId = null) => {
+  try {
+    const result = await pool.query(
+      `INSERT INTO notifications (user_id, title, message, type, reference_type, reference_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [userId, title, message, type, referenceType, referenceId]
+    );
+
+    console.log(`Notification created for user ${userId}: ${title}`);
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error creating notification:', error);
+    return null;
+  }
+};
+
+// Helper to notify project members
+const notifyProjectMembers = async (projectId, title, message, type, excludeUserId = null) => {
+  try {
+    // Get all project members
+    const membersResult = await pool.query(
+      `SELECT user_id FROM project_members WHERE project_id = $1`,
+      [projectId]
+    );
+
+    // Also include project creator
+    const creatorResult = await pool.query(
+      `SELECT user_id FROM projects WHERE project_id = $1`,
+      [projectId]
+    );
+
+    const allUserIds = new Set([
+      ...membersResult.rows.map(row => row.user_id),
+      creatorResult.rows[0]?.user_id
+    ]);
+
+    // Remove excluded user if specified
+    if (excludeUserId) {
+      allUserIds.delete(excludeUserId);
+    }
+
+    // Create notifications for each user
+    const notifications = [];
+    for (const userId of allUserIds) {
+      const notification = await createNotification(
+        userId,
+        title,
+        message,
+        type,
+        'project',
+        projectId
+      );
+      if (notification) notifications.push(notification);
+    }
+
+    console.log(`Created ${notifications.length} notifications for project ${projectId}`);
+    return notifications;
+  } catch (error) {
+    console.error('Error notifying project members:', error);
+    return [];
+  }
+};
+
 
 // ==================== USER ENDPOINTS ====================
 
@@ -651,6 +717,8 @@ router.post('/projects', authenticate, async (req, res) => {
 
     const projectId = projectResult.rows[0].project_id;
 
+
+
     // 2️⃣ Add selected members and send emails
     for (const memberId of members) {
       await client.query(
@@ -672,7 +740,27 @@ router.post('/projects', authenticate, async (req, res) => {
       }
     }
 
+    // 3️⃣ Create notification for creator
+    await createNotification(
+      creatorId,
+      'Project Created',
+      `You created a new project: "${project_name}"`,
+      'success',
+      'project',
+      projectId
+    );
 
+    // 4️⃣ Notify assigned members
+    for (const memberId of members) {
+      await createNotification(
+        memberId,
+        'Added to Project',
+        `You have been added to project: "${project_name}"`,
+        'assignment',
+        'project',
+        projectId
+      );
+    }
     await client.query('COMMIT');
 
     res.status(201).json({
@@ -779,8 +867,7 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
       transporter.sendMail({
         from: '"AVO Carbon" <administration.STS@avocarbon.com>',
         to: user.email,
-        cc: 'taha.khiari@avocarbon.com',  // Add Taha to CC
-        subject: `Project Updated: ${project_name}`,
+        subject: `🚀 Project Updated: ${project_name}`,
         html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1252,7 +1339,14 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
 
     console.log(`✅ Project updated and ${emailPromises.length} emails sent with CC to Taha`);
 
-    res.json({ 
+    await notifyProjectMembers(
+      projectId,
+      'Project Updated',
+      `Project "${project_name}" has been updated.`,
+      'info',
+      req.user.userId // Exclude the user who made the update
+    );
+    res.json({
       message: 'Project updated and emails sent successfully',
       emailsSent: emailPromises.length,
       ccRecipient: 'taha.khiari@avocarbon.com'
@@ -1358,34 +1452,7 @@ router.get('/projects/:id', authenticate, async (req, res) => {
   }
 });
 
-// Update project
-router.put('/projects/:id', authenticate, async (req, res) => {
-  const { id } = req.params;
-  const { project_name, start_date, end_date, comment } = req.body;
-  const user_id = req.user.userId;
 
-  try {
-    const result = await pool.query(
-      `UPDATE projects 
-       SET "project-name" = $1, "start-date" = $2, "end-date" = $3, comment = $4 
-       WHERE project_id = $5 AND user_id = $6 
-       RETURNING *`,
-      [project_name, start_date, end_date, comment, id, user_id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Project not found' });
-    }
-
-    res.json({
-      message: 'Project updated successfully',
-      project: result.rows[0]
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to update project' });
-  }
-});
 
 // Delete project
 router.delete('/projects/:id', authenticate, async (req, res) => {
@@ -1541,6 +1608,37 @@ router.post('/tasks', authenticate, async (req, res) => {
         };
       }
     }
+
+     // Create notification for task creator
+    await createNotification(
+      req.user.userId,
+      'Task Created',
+      `You created a new task: "${task_name}"`,
+      'success',
+      'task',
+      result.rows[0].task_id
+    );
+
+    // Notify assignee if assigned
+    if (parsedAssigneeId && parsedAssigneeId !== req.user.userId) {
+      await createNotification(
+        parsedAssigneeId,
+        'Task Assigned',
+        `You have been assigned to task: "${task_name}"`,
+        'assignment',
+        'task',
+        result.rows[0].task_id
+      );
+    }
+
+    // Notify other project members
+    await notifyProjectMembers(
+      project_id,
+      'New Task Created',
+      `A new task "${task_name}" was added to the project.`,
+      'task',
+      req.user.userId
+    );
 
     res.status(201).json({
       message: 'Task created successfully',
@@ -1782,6 +1880,18 @@ router.patch('/tasks/:id/assignee', authenticate, async (req, res) => {
           name: getNameFromEmail(assigneeResult.rows[0].email)
         };
       }
+    }
+
+     // Notify new assignee
+    if (parsedAssigneeId && parsedAssigneeId !== req.user.userId) {
+      await createNotification(
+        parsedAssigneeId,
+        'Task Assigned',
+        `You have been assigned to task: "${taskName}"`,
+        'assignment',
+        'task',
+        id
+      );
     }
 
     res.json({
@@ -2900,6 +3010,114 @@ router.get('/statistics/timeline/aggregated', authenticate, async (req, res) => 
     });
   }
 });
+
+
+
+
+//notifications endpoints 
+// ==================== NOTIFICATION ENDPOINTS ====================
+
+// Get user notifications
+router.get('/notifications', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const result = await pool.query(
+      `SELECT * FROM notifications 
+       WHERE user_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 50`,
+      [userId]
+    );
+
+    res.json({ notifications: result.rows });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+// Get unread notification count
+router.get('/notifications/unread-count', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const result = await pool.query(
+      `SELECT COUNT(*) FROM notifications 
+       WHERE user_id = $1 AND is_read = FALSE`,
+      [userId]
+    );
+
+    res.json({ count: parseInt(result.rows[0].count) });
+  } catch (error) {
+    console.error('Error fetching unread count:', error);
+    res.status(500).json({ error: 'Failed to fetch unread count' });
+  }
+});
+
+// Mark notification as read
+router.patch('/notifications/:id/read', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    const result = await pool.query(
+      `UPDATE notifications 
+       SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND user_id = $2
+       RETURNING *`,
+      [id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+
+    res.json({ notification: result.rows[0] });
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+    res.status(500).json({ error: 'Failed to mark notification as read' });
+  }
+});
+
+// Mark all notifications as read
+router.patch('/notifications/mark-all-read', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    await pool.query(
+      `UPDATE notifications 
+       SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
+       WHERE user_id = $1 AND is_read = FALSE`,
+      [userId]
+    );
+
+    res.json({ message: 'All notifications marked as read' });
+  } catch (error) {
+    console.error('Error marking all notifications as read:', error);
+    res.status(500).json({ error: 'Failed to mark all notifications as read' });
+  }
+});
+
+// Delete notification
+router.delete('/notifications/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    await pool.query(
+      'DELETE FROM notifications WHERE id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    res.json({ message: 'Notification deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting notification:', error);
+    res.status(500).json({ error: 'Failed to delete notification' });
+  }
+});
+
+
 
 function calculateMemberProgressTrend(timelineData) {
   if (timelineData.length < 7) return 0;
