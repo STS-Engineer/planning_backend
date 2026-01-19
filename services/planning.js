@@ -867,6 +867,7 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
       transporter.sendMail({
         from: '"AVO Carbon" <administration.STS@avocarbon.com>',
         to: user.email,
+        cc:'taha.khiari@avocarbon.com',
         subject: `🚀 Project Updated: ${project_name}`,
         html: `
       <!DOCTYPE html>
