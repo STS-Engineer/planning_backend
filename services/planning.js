@@ -867,7 +867,7 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
       transporter.sendMail({
         from: '"AVO Carbon" <administration.STS@avocarbon.com>',
         to: user.email,
-        cc:'taha.khiari@avocarbon.com',
+        cc:'majed.messai@avocarbon.com',
         subject: `🚀 Project Updated: ${project_name}`,
         html: `
       <!DOCTYPE html>
@@ -1350,7 +1350,7 @@ router.put('/projects/:projectId', authenticate, async (req, res) => {
     res.json({
       message: 'Project updated and emails sent successfully',
       emailsSent: emailPromises.length,
-      ccRecipient: 'taha.khiari@avocarbon.com'
+      ccRecipient: 'majed.messai@avocarbon.com'
     });
 
   } catch (error) {
