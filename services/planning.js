@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
-
+const { sendValidationRequestEmail, sendValidationConfirmationEmail } = require('../services/emailService');
 // ... your existing middleware and configurations ...
 
 JWT_SECRET = '12345';
@@ -2532,30 +2532,158 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
 
   try {
     const projectId = req.params.id;
-    const { status } = req.body;
     const userId = req.user.userId;
+    const { action } = req.body;
 
-    // Validate status
-    const validStatuses = ['active', 'completed', 'validated', 'archived'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status value' });
-    }
-
-    // Check if user has permission (admin or project member)
+    // Check permission (ADMIN or project member)
     const permissionCheck = await client.query(
-      `SELECT * FROM project_members WHERE project_id = $1 AND user_id = $2`,
+      `SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2`,
       [projectId, userId]
     );
 
-    const userRole = req.user.role;
-    if (userRole !== 'ADMIN' && permissionCheck.rows.length === 0) {
+    const isMember = permissionCheck.rows.length > 0;
+    const isAdmin = req.user.role === 'ADMIN';
+
+    if (!isAdmin && !isMember) {
       return res.status(403).json({ error: 'Not authorized to update project status' });
     }
 
-    // Update project status - FIXED: Use the status variable, not hardcoded 'completed'
+    let newStatus;
+    let message;
+
+    if (action === 'request_validation') {
+      if (!isMember && !isAdmin) {
+        return res.status(403).json({ error: 'Not authorized to request validation' });
+      }
+      newStatus = 'pending_validation';
+      message = 'Validation requested successfully';
+
+      // Get project details
+      const projectResult = await client.query(
+        `SELECT p."project-name" as project_name, 
+                p."start-date" as start_date, 
+                p."end-date" as end_date,
+                p.comment
+         FROM projects p 
+         WHERE p.project_id = $1`,
+        [projectId]
+      );
+
+      // Get requester details - FIXED: using id instead of user_id
+      const requesterResult = await client.query(
+        `SELECT id, email 
+         FROM "User" 
+         WHERE id = $1`,
+        [userId]
+      );
+
+      // Get all admin emails - FIXED: using id instead of user_id
+      const adminsResult = await client.query(
+        `SELECT email FROM "User" WHERE role = 'ADMIN'`
+      );
+
+      if (projectResult.rows.length > 0 && requesterResult.rows.length > 0) {
+        const project = projectResult.rows[0];
+        const requester = requesterResult.rows[0];
+        const admins = adminsResult.rows;
+
+        const projectDetails = {
+          name: project.project_name,
+          startDate: project.start_date,
+          endDate: project.end_date,
+          comment: project.comment
+        };
+
+        const requesterDetails = {
+          name: requester.name,
+          email: requester.email
+        };
+
+        // Send email to all admins
+        const emailPromises = admins.map(admin =>
+          sendValidationRequestEmail(admin.email, projectDetails, requesterDetails)
+            .catch(err => {
+              console.error(`Failed to send email to ${admin.email}:`, err);
+              return null;
+            })
+        );
+
+        // Don't wait for emails to complete
+        Promise.all(emailPromises).then(results => {
+          const successful = results.filter(r => r !== null).length;
+          console.log(`📧 Sent validation request emails to ${successful}/${admins.length} admins`);
+        });
+      }
+
+    } else if (action === 'validate') {
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Only admins can validate projects' });
+      }
+      newStatus = 'validated';
+      message = 'Project validated successfully';
+
+      // Get project details
+      const projectResult = await client.query(
+        `SELECT p."project-name" as project_name, p.*
+         FROM projects p 
+         WHERE p.project_id = $1`,
+        [projectId]
+      );
+
+      // Get project members - FIXED: using id instead of user_id
+      const membersResult = await client.query(
+        `SELECT u.email
+         FROM "User" u
+         INNER JOIN project_members pm ON u.id = pm.user_id
+         WHERE pm.project_id = $1`,
+        [projectId]
+      );
+
+      // Get admin details - FIXED: using id instead of user_id
+      const adminResult = await client.query(
+        `SELECT  email FROM "User" WHERE id = $1`,
+        [userId]
+      );
+
+      if (projectResult.rows.length > 0 && adminResult.rows.length > 0) {
+        const project = projectResult.rows[0];
+        const members = membersResult.rows;
+        const admin = adminResult.rows[0];
+
+        const projectDetails = {
+          name: project.project_name
+        };
+
+        const validatedBy = {
+          email: admin.email
+        };
+
+        // Send confirmation emails to all project members
+        const emailPromises = members.map(member =>
+          sendValidationConfirmationEmail(member.email, projectDetails, validatedBy)
+            .catch(err => {
+              console.error(`Failed to send email to ${member.email}:`, err);
+              return null;
+            })
+        );
+
+        Promise.all(emailPromises).then(results => {
+          const successful = results.filter(r => r !== null).length;
+          console.log(`📧 Sent validation confirmation emails to ${successful}/${members.length} members`);
+        });
+      }
+
+    } else {
+      return res.status(400).json({ error: 'Invalid action' });
+    }
+
+    // Update project status
     const result = await client.query(
-      `UPDATE projects SET status = $1  WHERE project_id = $2 RETURNING *`,
-      [status, projectId] // <-- This was the bug: you had ['completed', projectId]
+      `UPDATE projects 
+       SET status = $1 
+       WHERE project_id = $2 
+       RETURNING *`,
+      [newStatus, projectId]
     );
 
     if (result.rows.length === 0) {
@@ -2563,7 +2691,7 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
     }
 
     res.json({
-      message: `Project status updated to ${status}`,
+      message,
       project: result.rows[0]
     });
 
