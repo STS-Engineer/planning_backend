@@ -18,11 +18,12 @@ const createTransporter = () => {
   return transporter;
 };
 
-const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterDetails) => {
+const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterDetails, projectId) => {
   console.log('📧 ========== SENDING VALIDATION REQUEST EMAIL ==========');
   console.log('📧 To:', adminEmail);
   console.log('📧 Project:', projectDetails);
   console.log('📧 Requester:', requesterDetails);
+  console.log('📧 Project ID:', projectId);
 
   try {
     const transporter = createTransporter();
@@ -31,6 +32,12 @@ const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterD
     console.log('🔍 Testing SMTP connection...');
     await transporter.verify();
     console.log('✅ SMTP connection verified successfully');
+
+    // Create the project URL with the project ID
+    const frontendUrl = 'https://sts-project-management.azurewebsites.net';
+    const projectUrl = `${frontendUrl}/projects/${projectId}`;
+    
+    console.log('🔗 Project URL:', projectUrl);
 
     const mailOptions = {
       from: '"Project Management System" <administration.STS@avocarbon.com>',
@@ -114,6 +121,9 @@ const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterD
                   <span class="label">📅 End Date:</span> ${projectDetails.endDate || 'Not specified'}
                 </div>
                 <div class="info-row">
+                  <span class="label">🆔 Project ID:</span> ${projectId}
+                </div>
+                <div class="info-row">
                   <span class="label">👤 Requested by:</span> ${requesterDetails.name} (${requesterDetails.email})
                 </div>
                 <div class="info-row">
@@ -131,10 +141,15 @@ const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterD
               <p>Please review and validate this project in the Project Management System.</p>
               
               <center>
-             <a href="https://sts-project-management.azurewebsites.net" class="button">
-              Review Project
-             </a>
+                <a href="${projectUrl}" class="button" style="color: white; text-decoration: none;">
+                  Review Project
+                </a>
               </center>
+              
+              <p style="margin-top: 15px; font-size: 14px; color: #666;">
+                Or copy and paste this link in your browser:<br>
+                <span style="word-break: break-all;">${projectUrl}</span>
+              </p>
             </div>
             <div class="footer">
               <p>This is an automated message from the Project Management System.</p>
@@ -150,6 +165,7 @@ const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterD
         ${requesterDetails.name} has requested validation for the following project:
         
         Project Name: ${projectDetails.name}
+        Project ID: ${projectId}
         Start Date: ${projectDetails.startDate || 'Not specified'}
         End Date: ${projectDetails.endDate || 'Not specified'}
         Requested by: ${requesterDetails.name} (${requesterDetails.email})
@@ -158,13 +174,16 @@ const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterD
         ${projectDetails.comment ? `Description: ${projectDetails.comment}` : ''}
         
         Please review and validate this project in the Project Management System.
+        
+        Project URL: ${projectUrl}
       `
     };
 
     console.log('📧 Mail options prepared:', {
       from: mailOptions.from,
       to: mailOptions.to,
-      subject: mailOptions.subject
+      subject: mailOptions.subject,
+      projectUrl: projectUrl
     });
 
     console.log('📤 Sending email...');
@@ -173,7 +192,7 @@ const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterD
     console.log('✅ Message ID:', info.messageId);
     console.log('✅ Response:', info.response);
     
-    return { success: true, messageId: info.messageId };
+    return { success: true, messageId: info.messageId, projectUrl };
   } catch (error) {
     console.error('❌ ========== EMAIL SEND FAILED ==========');
     console.error('❌ Error name:', error.name);
@@ -183,6 +202,7 @@ const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterD
     throw error;
   }
 };
+
 
 const sendValidationConfirmationEmail = async (memberEmail, projectDetails, validatedBy) => {
   console.log('📧 ========== SENDING VALIDATION CONFIRMATION EMAIL ==========');
