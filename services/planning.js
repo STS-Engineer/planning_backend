@@ -2531,7 +2531,7 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const projectId = req.params.id;
+    const projectId = req.params.id; // This is the project ID
     const userId = req.user.userId;
     const { action } = req.body;
 
@@ -2569,7 +2569,7 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
         [projectId]
       );
 
-      // Get requester details - FIXED: using id instead of user_id
+      // Get requester details
       const requesterResult = await client.query(
         `SELECT id, email 
          FROM "User" 
@@ -2577,7 +2577,7 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
         [userId]
       );
 
-      // Get all admin emails - FIXED: using id instead of user_id
+      // Get all admin emails
       const adminsResult = await client.query(
         `SELECT email FROM "User" WHERE role = 'ADMIN'`
       );
@@ -2595,13 +2595,13 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
         };
 
         const requesterDetails = {
-          name: requester.name,
+          name: requester.name || getNameFromEmail(requester.email), // ✅ Added fallback
           email: requester.email
         };
 
-        // Send email to all admins
+        // Send email to all admins - PASS PROJECT ID
         const emailPromises = admins.map(admin =>
-          sendValidationRequestEmail(admin.email, projectDetails, requesterDetails)
+          sendValidationRequestEmail(admin.email, projectDetails, requesterDetails, projectId) // ✅ Added projectId parameter
             .catch(err => {
               console.error(`Failed to send email to ${admin.email}:`, err);
               return null;
@@ -2630,7 +2630,7 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
         [projectId]
       );
 
-      // Get project members - FIXED: using id instead of user_id
+      // Get project members
       const membersResult = await client.query(
         `SELECT u.email
          FROM "User" u
@@ -2639,9 +2639,9 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
         [projectId]
       );
 
-      // Get admin details - FIXED: using id instead of user_id
+      // Get admin details
       const adminResult = await client.query(
-        `SELECT  email FROM "User" WHERE id = $1`,
+        `SELECT email FROM "User" WHERE id = $1`,
         [userId]
       );
 
@@ -2655,12 +2655,13 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
         };
 
         const validatedBy = {
+          name: admin.name || getNameFromEmail(admin.email), // ✅ Added fallback
           email: admin.email
         };
 
-        // Send confirmation emails to all project members
+        // Send confirmation emails to all project members - PASS PROJECT ID
         const emailPromises = members.map(member =>
-          sendValidationConfirmationEmail(member.email, projectDetails, validatedBy)
+          sendValidationConfirmationEmail(member.email, projectDetails, validatedBy, projectId) // ✅ Added projectId parameter
             .catch(err => {
               console.error(`Failed to send email to ${member.email}:`, err);
               return null;
@@ -2702,7 +2703,6 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
     client.release();
   }
 });
-
 // Get statistics for a specific member across all projects
 // Get statistics for a specific member across all projects
 router.get('/statistics/member/:memberId', authenticate, async (req, res) => {
