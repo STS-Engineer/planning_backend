@@ -146,10 +146,6 @@ const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterD
                 </a>
               </center>
               
-              <p style="margin-top: 15px; font-size: 14px; color: #666;">
-                Or copy and paste this link in your browser:<br>
-                <span style="word-break: break-all;">${projectUrl}</span>
-              </p>
             </div>
             <div class="footer">
               <p>This is an automated message from the Project Management System.</p>
