@@ -12,6 +12,7 @@ const server = http.createServer(app);
 
 // Routers & Jobs
 const prodformrouter = require('./services/planning');   
+const { scheduleWeeklyReport } = require('./jobs/weeklyKPIScheduler');
 const { startWeeklyReminderJob } = require('./jobs/weeklyReminders');
 
 /* =========================================================
@@ -54,7 +55,7 @@ app.get('/health', (req, res) => {
 /* =========================================================
    START JOBS
 ========================================================= */
-
+scheduleWeeklyReport();
 startWeeklyReminderJob();
 
 /* =========================================================
