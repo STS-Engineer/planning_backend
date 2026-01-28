@@ -2527,7 +2527,7 @@ router.get('/statistics/project/:projectId', authenticate, async (req, res) => {
 
 
 // Update project status (validate/completed/archive)
-router.put('/projects/:id/status', async (req, res) => {
+router.put('/projects/:id/status', authenticate , async (req, res) => {
   const client = await pool.connect();
 
   try {
