@@ -2527,7 +2527,7 @@ router.get('/statistics/project/:projectId', authenticate, async (req, res) => {
 
 
 // Update project status (validate/completed/archive)
-router.put('/projects/:id/status', authenticate , async (req, res) => {
+router.put('/projects/:id/status', authenticate, async (req, res) => {
   const client = await pool.connect();
 
   try {
@@ -2614,6 +2614,31 @@ router.put('/projects/:id/status', authenticate , async (req, res) => {
           console.log(`📧 Sent validation request emails to ${successful}/${admins.length} admins`);
         });
       }
+
+    } else if (action === 'block') {
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Only admins can block projects' });
+      }
+      newStatus = 'blocked';
+      message = 'Project blocked successfully';
+
+      // Optional: Send notification emails to project members about the block
+      const membersResult = await client.query(
+        `SELECT u.email
+     FROM "User" u
+     INNER JOIN project_members pm ON u.id = pm.user_id
+     WHERE pm.project_id = $1`,
+        [projectId]
+      );
+
+      // You can add email notification logic here if needed
+
+    } else if (action === 'unblock') {
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Only admins can unblock projects' });
+      }
+      newStatus = 'active';
+      message = 'Project unblocked successfully';
 
     } else if (action === 'validate') {
       if (!isAdmin) {
