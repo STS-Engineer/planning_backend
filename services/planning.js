@@ -1458,26 +1458,37 @@ router.get('/projects/:id', authenticate, async (req, res) => {
 // Delete project
 router.delete('/projects/:id', authenticate, async (req, res) => {
   const { id } = req.params;
-  const user_id = req.user.userId;
+  const { userId, role } = req.user;
 
   try {
-    // First delete associated tasks
-    await pool.query('DELETE FROM tasks WHERE project_id = $1', [id]);
-
-    // Then delete the project
-    const result = await pool.query(
-      'DELETE FROM projects WHERE project_id = $1 AND user_id = $2 RETURNING *',
-      [id, user_id]
+    // 1️⃣ Check if project exists
+    const projectCheck = await pool.query(
+      "SELECT user_id FROM projects WHERE project_id = $1",
+      [id]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Project not found' });
+    if (projectCheck.rows.length === 0) {
+      return res.status(404).json({ message: "Project not found" });
     }
 
-    res.json({ message: 'Project deleted successfully' });
+    const projectOwnerId = projectCheck.rows[0].user_id;
+
+    // 2️⃣ Authorization check
+    if (role !== "ADMIN" && projectOwnerId !== userId) {
+      return res.status(403).json({ message: "Forbidden: Not allowed to delete this project" });
+    }
+
+    // 3️⃣ Delete tasks first
+    await pool.query("DELETE FROM tasks WHERE project_id = $1", [id]);
+
+    // 4️⃣ Delete project
+    await pool.query("DELETE FROM projects WHERE project_id = $1", [id]);
+
+    res.json({ message: "Project deleted successfully" });
+
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to delete project' });
+    res.status(500).json({ error: "Failed to delete project" });
   }
 });
 
