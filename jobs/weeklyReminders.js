@@ -80,18 +80,14 @@ async function runWeeklyReminders() {
     }
 
     // 2) Admin(s) — adjust role value to what you actually store ('ADMIN' vs 'admin')
-    const adminsRes = await pool.query(
-      `SELECT id, email FROM "User" WHERE role = $1 AND email IS NOT NULL`,
-      ["ADMIN"]
-    );
+    // 2) Specific admin only (Taha)
+    const adminEmail = "taha.khiari@avocarbon.com";
+    const adminName = getNameFromEmail(adminEmail);
 
-    for (const a of adminsRes.rows) {
-      const name = getNameFromEmail(a.email);
-      try {
-        await sendAdminWeeklyReminderEmail(a.email, name);
-      } catch (e) {
-        console.error("Failed admin reminder:", a.email, e.message);
-      }
+    try {
+      await sendAdminWeeklyReminderEmail(adminEmail, adminName);
+    } catch (e) {
+      console.error("Failed admin reminder:", adminEmail, e.message);
     }
 
     console.log("✅ Weekly reminders sent");
