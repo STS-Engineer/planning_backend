@@ -2589,14 +2589,11 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
       );
 
       // Get all admin emails
-      const adminsResult = await client.query(
-        `SELECT email FROM "User" WHERE role = 'ADMIN'`
-      );
 
       if (projectResult.rows.length > 0 && requesterResult.rows.length > 0) {
         const project = projectResult.rows[0];
         const requester = requesterResult.rows[0];
-        const admins = adminsResult.rows;
+
 
         const projectDetails = {
           name: project.project_name,
@@ -2611,19 +2608,14 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
         };
 
         // Send email to all admins - PASS PROJECT ID
-        const emailPromises = admins.map(admin =>
-          sendValidationRequestEmail(admin.email, projectDetails, requesterDetails, projectId) // ✅ Added projectId parameter
-            .catch(err => {
-              console.error(`Failed to send email to ${admin.email}:`, err);
-              return null;
-            })
-        );
-
-        // Don't wait for emails to complete
-        Promise.all(emailPromises).then(results => {
-          const successful = results.filter(r => r !== null).length;
-          console.log(`📧 Sent validation request emails to ${successful}/${admins.length} admins`);
-        });
+        // Send email only to Taha
+        sendValidationRequestEmail('taha.khiari@avocarbon.com', projectDetails, requesterDetails, projectId)
+          .then(() => {
+            console.log(`📧 Sent validation request email to taha.khiari@avocarbon.com`);
+          })
+          .catch(err => {
+            console.error(`Failed to send email to taha.khiari@avocarbon.com:`, err);
+          });
       }
 
     } else if (action === 'block') {
