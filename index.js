@@ -12,8 +12,7 @@ const server = http.createServer(app);
 
 // Routers & Jobs
 const prodformrouter = require('./services/planning');   
-const { scheduleWeeklyReport } = require('./jobs/weeklyKPIScheduler');
-const { startWeeklyReminderJob } = require('./jobs/weeklyReminders');
+
 
 /* =========================================================
    CORS CONFIGURATION (MUST BE FIRST)
@@ -52,11 +51,7 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK' });
 });
 
-/* =========================================================
-   START JOBS
-========================================================= */
-scheduleWeeklyReport();
-startWeeklyReminderJob();
+
 
 /* =========================================================
    SERVER START
