@@ -10,6 +10,8 @@ const { sendValidationRequestEmail, sendValidationConfirmationEmail } = require(
 
 JWT_SECRET = '12345';
 JWT_REFRESH_SECRET = '123456';
+
+const ADMIN_EMAIL = 'taha.khiari@avocarbon.com';
 // Middleware to authenticate and extract user from JWT
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -2609,16 +2611,16 @@ router.put('/projects/:id/status', authenticate, async (req, res) => {
 
         // Send email to all admins - PASS PROJECT ID
         // Send email only to Taha
-        sendValidationRequestEmail('taha.khiari@avocarbon.com', projectDetails, requesterDetails, projectId)
-          .then(() => {
-            console.log(`📧 Sent validation request email to taha.khiari@avocarbon.com`);
-          })
-          .catch(err => {
-            console.error(`Failed to send email to taha.khiari@avocarbon.com:`, err);
+       sendValidationRequestEmail(projectDetails, requesterDetails, projectId)
+           .then(() => {
+           console.log(`📧 Sent validation request email to ${ADMIN_EMAIL}`);
+            })
+           .catch(err => {
+            console.error(`Failed to send email to ${ADMIN_EMAIL}:`, err);
           });
-      }
+        }
 
-    } else if (action === 'block') {
+     } else if (action === 'block') {
       if (!isAdmin) {
         return res.status(403).json({ error: 'Only admins can block projects' });
       }
