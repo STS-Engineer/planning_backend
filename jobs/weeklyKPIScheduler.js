@@ -186,11 +186,11 @@ ${members.map(m => {
 const sendWeeklyKPIReport = async () => {
   const members = await getTeamMembers();
   const stats = await Promise.all(members.map(m => getMemberStatistics(m.id)));
-  const admins = await pool.query(`SELECT email FROM "User" WHERE role='ADMIN'`);
+  
 
   await transporter.sendMail({
     from: '"STS KPI" <administration.STS@avocarbon.com>',
-    to: admins.rows.map(a => a.email).join(','),
+    to: 'taha.khiari@avocarbon.com',
     subject: `📊 Weekly KPI Report – Week ${getWeekNumber()}`,
     html: generateWeeklyKPIEmail(stats)
   });
