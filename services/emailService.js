@@ -1,6 +1,8 @@
 // services/emailService.js
 const nodemailer = require('nodemailer');
 
+const ADMIN_EMAIL = 'taha.khiari@avocarbon.com';
+
 const createTransporter = () => {
   console.log('📧 Creating email transporter...');
   const transporter = nodemailer.createTransport({
@@ -18,9 +20,9 @@ const createTransporter = () => {
   return transporter;
 };
 
-const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterDetails, projectId) => {
+const sendValidationRequestEmail = async (projectDetails, requesterDetails, projectId) => {
   console.log('📧 ========== SENDING VALIDATION REQUEST EMAIL ==========');
-  console.log('📧 To:', adminEmail);
+  console.log('📧 To:', ADMIN_EMAIL);
   console.log('📧 Project:', projectDetails);
   console.log('📧 Requester:', requesterDetails);
   console.log('📧 Project ID:', projectId);
@@ -41,7 +43,7 @@ const sendValidationRequestEmail = async (adminEmail, projectDetails, requesterD
 
     const mailOptions = {
       from: '"Project Management System" <administration.STS@avocarbon.com>',
-      to: adminEmail,
+      to: ADMIN_EMAIL,
       subject: `🔔 Validation Request: ${projectDetails.name}`,
       html: `
         <!DOCTYPE html>
